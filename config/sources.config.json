@@ -1,0 +1,157 @@
+{
+  "_comment": "网站内容来源 — 按推送类型分类。llm_task 指定 LLM 处理用哪个 prompt。",
+  "sources": {
+    "ai-weekly": [
+      {
+        "id": "openai",
+        "name": "OpenAI Blog",
+        "url": "https://openai.com/index/",
+        "enabled": true,
+        "llm_task": "ai-weekly",
+        "note": "Codex/GPT/机器人 官方发布"
+      },
+      {
+        "id": "venturebeat",
+        "name": "VentureBeat AI",
+        "url": "https://venturebeat.com/category/ai/",
+        "enabled": true,
+        "llm_task": "ai-weekly",
+        "note": "AI 创投 + 模型评测"
+      },
+      {
+        "id": "jiqizhixin",
+        "name": "机器之心",
+        "url": "https://www.jiqizhixin.com",
+        "enabled": true,
+        "llm_task": "ai-weekly",
+        "note": "中文 AI 深度报道"
+      },
+      {
+        "id": "qbitai",
+        "name": "量子位",
+        "url": "https://www.qbitai.com",
+        "enabled": true,
+        "llm_task": "ai-weekly",
+        "note": "中文 AI 快讯"
+      },
+      {
+        "id": "huxiu",
+        "name": "虎嗅",
+        "url": "https://www.huxiu.com",
+        "enabled": true,
+        "llm_task": "ai-weekly",
+        "note": "科技商业评论"
+      },
+      {
+        "id": "microsoft_ai",
+        "name": "Microsoft AI Blog",
+        "url": "https://microsoft.ai/news/",
+        "enabled": true,
+        "llm_task": "ai-weekly",
+        "note": "微软 AI / Build / MAI 模型"
+      },
+      {
+        "id": "google_research",
+        "name": "Google Research Blog",
+        "url": "https://research.google/blog/",
+        "enabled": true,
+        "llm_task": "ai-weekly",
+        "note": "Gemini / RAG / Agent 研究"
+      },
+      {
+        "id": "nvidia_dev",
+        "name": "NVIDIA Developer Blog",
+        "url": "https://developer.nvidia.com/blog/",
+        "enabled": true,
+        "llm_task": "ai-weekly",
+        "note": "Nemotron / 推理模型"
+      },
+      {
+        "id": "anthropic",
+        "name": "Anthropic Research",
+        "url": "https://www.anthropic.com/research/",
+        "enabled": true,
+        "llm_task": "ai-weekly",
+        "note": "Claude 模型研究"
+      },
+      {
+        "id": "xai",
+        "name": "xAI Blog",
+        "url": "https://x.ai/news/",
+        "enabled": true,
+        "llm_task": "ai-weekly",
+        "note": "Grok 更新"
+      }
+    ],
+    "logistics-daily": [
+      {
+        "id": "kjdsnews",
+        "name": "跨境电商新闻",
+        "url": "https://www.kjdsnews.com/news/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "跨境物流综合资讯 + 政策动态"
+      },
+      {
+        "id": "sofreight",
+        "name": "搜航网",
+        "url": "https://www.sofreight.com/news",
+        "enabled": false,
+        "llm_task": "global-logistics-risk",
+        "note": "航运价格 + 港口动态"
+      },
+      {
+        "id": "jctrans",
+        "name": "锦程物流网",
+        "url": "https://www.jctrans.com/news",
+        "enabled": false,
+        "llm_task": "cn-logistics-industry",
+        "note": "跨境物流综合资讯"
+      },
+      {
+        "id": "customs_news",
+        "name": "海关总署公告",
+        "url": "http://www.customs.gov.cn",
+        "enabled": false,
+        "llm_task": "cn-logistics-industry",
+        "note": "清关政策变化"
+      }
+    ],
+    "exchange-rate": [
+      {
+        "id": "safe",
+        "name": "国家外汇管理局",
+        "url": "https://www.safe.gov.cn",
+        "enabled": false,
+        "llm_task": "exchange-rate",
+        "note": "人民币汇率中间价"
+      },
+      {
+        "id": "xe",
+        "name": "XE Currency",
+        "url": "https://www.xe.com/currencytables/",
+        "enabled": false,
+        "llm_task": "exchange-rate",
+        "note": "实时汇率数据"
+      }
+    ],
+    "weather-alert": [
+      {
+        "id": "weather_gov",
+        "name": "中央气象台",
+        "url": "http://www.nmc.cn",
+        "enabled": false,
+        "llm_task": "global-logistics-risk",
+        "note": "极端天气预警"
+      },
+      {
+        "id": "typhoon",
+        "name": "台风路径网",
+        "url": "https://typhoon.slt.zj.gov.cn",
+        "enabled": false,
+        "llm_task": "global-logistics-risk",
+        "note": "台风实时路径"
+      }
+    ]
+  }
+}

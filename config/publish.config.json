@@ -1,0 +1,12 @@
+{
+  "_comment": "发布配置 — 企微推送和素材管理参数",
+  "admin_base_url": "http://bot.by56.com:8000/admin",
+  "admin_user": "admin",
+  "admin_password": "Admin@2026",
+  "default_user_id": "18820271886",
+  "card_defaults": {
+    "icon_url": "",
+    "source_desc": "百运科技 · AI热点周报",
+    "card_type": "news_notice"
+  }
+}

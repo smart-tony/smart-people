@@ -1,0 +1,30 @@
+services:
+  weekly-push-tool:
+    build: .
+    container_name: weekly-push-tool
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+
+  caddy:
+    image: caddy:2
+    container_name: weekly-push-caddy
+    restart: unless-stopped
+    depends_on:
+      - weekly-push-tool
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

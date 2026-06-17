@@ -1,0 +1,12 @@
+services:
+  weekly-push-tool:
+    build: .
+    container_name: weekly-push-tool
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8010:8000"
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data

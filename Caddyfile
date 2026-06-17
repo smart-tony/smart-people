@@ -1,0 +1,4 @@
+{$APP_DOMAIN} {
+  encode gzip
+  reverse_proxy weekly-push-tool:8000
+}

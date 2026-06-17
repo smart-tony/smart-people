@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>晨报推送工作台</title>
+  <link rel="stylesheet" href="./styles.css?v=20260617-workspace3">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">百运科技</p>
+      <h1>晨报推送工作台</h1>
+    </div>
+    <div class="header-actions">
+      <span id="saveStatus" class="save-status">自动保存待启动</span>
+      <button id="loadSampleBtn" type="button">载入示例</button>
+      <button id="downloadHtmlBtn" type="button" class="primary">导出 HTML</button>
+    </div>
+  </header>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <main class="shell">
+    <section class="panel editor-panel">
+      <div class="workspace-toolbar">
+        <div class="workspace-actions">
+          <button id="openImportBtn" type="button">导入 Markdown</button>
+          <button id="openSourcesBtn" type="button">抓取来源</button>
+          <button id="openPushBtn" type="button">推送设置</button>
+          <button id="expandAllItemsBtn" type="button">展开条目</button>
+          <button id="collapseAllItemsBtn" type="button">收起条目</button>
+        </div>
+        <div class="workspace-actions">
+          <button id="addItemBtn" type="button" class="primary add-item-action">新增条目</button>
+          <button id="renumberBtn" type="button" class="renumber-action">重新编号</button>
+        </div>
+      </div>
+
+      <nav class="tabs" aria-label="编辑步骤">
+        <button class="tab active" data-tab="basic" type="button">基础信息</button>
+        <button class="tab" data-tab="import" type="button">导入 Markdown</button>
+        <button class="tab" data-tab="items" type="button">周报条目</button>
+        <button class="tab" data-tab="sources" type="button">来源管理</button>
+        <button class="tab" data-tab="push" type="button">企微推送</button>
+      </nav>
+
+      <div class="tab-panel active" id="tab-basic">
+        <div class="section-title">
+          <h3>表头设置</h3>
+          <p>这里控制 HTML 顶部 Logo、期号、标题、日期和主题信息。</p>
+        </div>
+        <div class="grid two">
+          <label>周报标题<input id="titleInput" type="text"></label>
+          <label>品牌名称<input id="brandInput" type="text"></label>
+          <label>开始日期<input id="startDateInput" type="date"></label>
+          <label>结束日期<input id="endDateInput" type="date"></label>
+          <label>期号显示<input id="volInput" type="text"></label>
+          <label>精选数量显示<input id="countLabelInput" type="text" placeholder="不填则自动按条目数显示"></label>
+          <label>主题标签<input id="topicInput" type="text"></label>
+          <label class="wide">Logo URL<input id="logoInput" type="url"></label>
+        </div>
+        <div class="section-title">
+          <h3>正文导读</h3>
+          <p>这里控制表头下方的摘要和文末结语。</p>
+        </div>
+        <label>本期摘要<textarea id="summaryInput" rows="7"></textarea></label>
+        <label>结语<textarea id="endingInput" rows="5"></textarea></label>
+      </div>
+
+      <div class="tab-panel" id="tab-import">
+        <p class="hint">粘贴你的 Markdown 周报草稿，工具会识别“## 1｜标题”、标签、正文和来源链接。</p>
+        <textarea id="markdownInput" rows="18" placeholder="# AI热点技术周报..."></textarea>
+        <div class="button-row">
+          <button id="parseMarkdownBtn" type="button" class="primary">解析到编辑器</button>
+          <button id="clearMarkdownBtn" type="button">清空</button>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-items">
+        <div class="toolbar">
+          <button type="button" class="primary add-item-action">新增条目</button>
+          <button type="button" class="renumber-action">重新编号</button>
+        </div>
+        <div id="itemsEditor" class="items-editor"></div>
+      </div>
+
+      <div class="tab-panel" id="tab-sources">
+        <div class="section-title compact-title">
+          <h3>抓取候选</h3>
+          <p>选择模块后获取候选内容，先看候选池，再决定导入哪些条目。</p>
+        </div>
+        <div class="source-runner">
+          <label>模块
+            <select id="sourceModuleSelect">
+              <option value="ai-weekly">AI 科技周报</option>
+              <option value="logistics-daily">物流快讯</option>
+              <option value="exchange-rate">汇率快讯</option>
+              <option value="weather-alert">天气预警</option>
+            </select>
+          </label>
+          <label>每来源抓取条数<input id="fetchLimitInput" type="number" min="1" max="15" value="8"></label>
+          <label class="inline-toggle source-refresh-toggle">
+            <input id="forceRefreshInput" type="checkbox" checked>
+            忽略缓存，重新抓取
+          </label>
+          <div class="source-runner-actions">
+            <button id="reloadSourcesBtn" type="button">重新读取配置</button>
+            <button id="simulateFetchBtn" type="button" class="primary">一键获取内容</button>
+          </div>
+        </div>
+        <div id="sourceFetchHint" class="source-fetch-hint"></div>
+        <div class="candidate-toolbar" style="display:none">
+          <span id="candidateCount"></span>
+          <button id="selectAllCandidatesBtn" type="button">全选</button>
+          <button id="deselectAllCandidatesBtn" type="button">全不选</button>
+          <button id="importCandidatesBtn" type="button" class="primary">导入已选 → 条目</button>
+        </div>
+        <div id="candidateList" class="candidate-list">
+          <div class="candidate-empty">
+            <strong>候选池</strong>
+            <p>点击“一键获取内容”后，抓取结果会在这里显示，可勾选后导入条目。</p>
+          </div>
+        </div>
+        <div id="fetchErrors" class="fetch-errors" style="display:none"></div>
+        <div class="draft-section">
+          <select id="draftSelect" class="draft-select"><option value="">📂 加载历史草稿...</option></select>
+          <button id="loadDraftBtn" type="button">加载</button>
+          <button id="clearCacheBtn" type="button" title="清除 URL 缓存，下次抓取时重新处理所有文章">清缓存</button>
+        </div>
+
+        <div class="source-config-panel">
+          <div class="section-title">
+            <h3>来源配置</h3>
+            <p>低频维护项：新增来源或查看当前 `sources.config.json`。</p>
+          </div>
+          <div class="grid two">
+          <label>来源名称<input id="sourceNameInput" type="text" placeholder="例如 航搜网今日头条"></label>
+          <label>来源 ID<input id="sourceIdInput" type="text" placeholder="例如 hangsou-headlines"></label>
+          <label>来源网址<input id="sourceUrlInput" type="url" placeholder="https://..."></label>
+          <label class="wide">备注<input id="sourceNoteInput" type="text" placeholder="例如 物流前沿 / 外贸时讯 / 跨境快报"></label>
+          </div>
+          <div class="button-row">
+            <button id="addSourceBtn" type="button" class="primary">新增来源</button>
+          </div>
+          <label>当前来源列表<textarea id="sourcesOutput" rows="8" readonly></textarea></label>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-push">
+        <div class="section-title">
+          <h3>企微推送</h3>
+          <p>填写卡片信息并复制 JSON。</p>
+        </div>
+        <div class="grid two">
+          <label>HTML 页面地址<input id="pageUrlInput" type="url" placeholder="上传素材后粘贴预览 URL"></label>
+          <label>封面图地址<input id="coverUrlInput" type="url" placeholder="建议 1200x675"></label>
+          <label>接收人用户 ID<input id="userIdInput" type="text" placeholder="如 18820271886"></label>
+          <label>卡片来源<input id="sourceDescInput" type="text"></label>
+          <label class="wide">卡片主标题<input id="cardTitleInput" type="text"></label>
+          <label class="wide">卡片描述<input id="cardDescInput" type="text"></label>
+        </div>
+        <div class="warning">纵向内容列表已固定不生成，避免企微 42033 Missing Title 报错。</div>
+        <div class="button-row">
+          <button id="copyPushJsonBtn" type="button" class="primary">复制推送 JSON</button>
+          <button id="copyChecklistBtn" type="button">复制填写清单</button>
+        </div>
+        <label>推送 JSON<textarea id="pushJsonOutput" rows="16" readonly></textarea></label>
+      </div>
+    </section>
+
+    <section class="panel preview-panel">
+      <div class="preview-head">
+        <div>
+          <p class="eyebrow">HTML 预览</p>
+          <h2 id="previewName">AI 热点技术周报</h2>
+        </div>
+        <div class="preview-actions">
+          <span class="preview-chip">企微文章宽度</span>
+          <button id="refreshPreviewBtn" type="button">刷新</button>
+        </div>
+      </div>
+      <div class="preview-stage">
+        <iframe id="previewFrame" title="周报预览"></iframe>
+      </div>
+    </section>
+  </main>
+
+  <template id="itemTemplate">
+    <article class="item-form">
+      <div class="item-head">
+        <div class="item-head-main">
+          <strong class="item-number"></strong>
+          <div class="item-kpis">
+            <span class="item-chip item-tag-count"></span>
+            <span class="item-chip item-source-count"></span>
+            <span class="item-chip item-image-state"></span>
+          </div>
+        </div>
+        <div class="item-head-actions">
+          <select class="ai-task-type">
+            <option value="ai-weekly">🤖 AI 科技周报</option>
+            <option value="global-logistics-risk">🌍 国际物流风险</option>
+            <option value="cn-logistics-industry">📦 国内物流行业</option>
+            <option value="exchange-rate">💱 汇率分析</option>
+          </select>
+          <button class="item-toggle" type="button">展开</button>
+          <button class="ai-process-item" type="button">AI 处理</button>
+          <button class="remove-item" type="button">删除</button>
+        </div>
+      </div>
+      <label>标题<input class="item-title" type="text"></label>
+      <div class="item-brief"></div>
+      <div class="item-body" hidden>
+        <div class="grid two compact">
+          <label>标签，用逗号或空格分隔<input class="item-tags" type="text"></label>
+          <label>来源 URL，可多行<textarea class="item-sources" rows="3"></textarea></label>
+        </div>
+        <label>正文<textarea class="item-desc" rows="7"></textarea></label>
+        <div class="grid two compact">
+          <label>图片 URL<input class="item-image" type="url" placeholder="可粘贴网页图片地址"></label>
+          <label>图片说明<input class="item-image-alt" type="text" placeholder="选填，用于图片下方说明"></label>
+        </div>
+        <div class="image-tools">
+          <input class="item-file" type="file" accept="image/*">
+          <button class="clear-image" type="button">清除图片</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="./app.js?v=20260617-workspace3"></script>
+</body>
+</html>
