@@ -16,6 +16,7 @@ class RawArticle(BaseModel):
     source_name: str = ""                       # 来源名称，如 "跨境电商新闻"
     module: str = ""                            # 所属模块: ai-weekly / logistics-daily 等
     content_snippet: Optional[str] = None       # 页面抓到的正文片段
+    image: str = ""                             # og:image 或页面首图 URL
 
     class Config:
         frozen = False  # 允许后续修改（如补充正文）
@@ -29,11 +30,13 @@ class CandidateItem(BaseModel):
     source_url: str
     source_id: str = ""
     source_name: str = ""
+    image: str = ""                     # 封面图/缩略图 URL
     
     # AI 结构化结果
     ai_summary: str = ""                # AI 摘要
     ai_analysis: str = ""               # AI 行业分析
     ai_tags: List[str] = Field(default_factory=list)
+    body_text: str = ""                 # 文章正文（抓取原文）
     
     # AI 打分（借鉴 Horizon）
     ai_score: float = 5.0               # 0-10，对目标业务的影响程度
@@ -44,6 +47,14 @@ class CandidateItem(BaseModel):
     processed_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
+
+
+class ReportBriefing(BaseModel):
+    """报告顶部概览：日期、深圳天气、常见汇率。"""
+    report_date: str = ""
+    weather: dict = Field(default_factory=dict)
+    exchange_rates: list[dict] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class FetchResult(BaseModel):
@@ -57,3 +68,6 @@ class FetchResult(BaseModel):
     from_cache: bool = False            # 是否因本次无新内容而回退到最近候选
     cached_count: int = 0               # 本次被 URL 缓存过滤的数量
     draft_filename: str = ""            # 回退读取的草稿文件名
+    briefing: ReportBriefing = Field(default_factory=ReportBriefing)
+    llm_enabled: bool = False           # 本次抓取是否启用 LLM 分析
+    tokens_used: int = 0                # 本次抓取 LLM 消耗 token

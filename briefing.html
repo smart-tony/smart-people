@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>运小星日报</title>
+<style>
+:root {
+  --brand: #6366f1; --brand-dark: #4f46e5;
+  --text: #0f172a; --text-sub: #475569; --muted: #94a3b8;
+  --border: #e2e8f0; --bg: #f8fafc; --card: #fff;
+  --tag-bg: #f1f5f9; --tag-text: #475569;
+  --score-hi: #ef4444; --score-md: #f59e0b; --score-lo: #94a3b8;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  font-size: 15px;
+}
+/* Top bar */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(255,255,255,.92); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  text-align: center; padding: 12px 24px 8px;
+}
+.topbar-logo { display: inline-block; }
+.topbar-logo img { height: 36px; width: auto; }
+.topbar-sub { font-size: 12px; color: var(--muted); margin-top: 4px; letter-spacing: .05em; }
+.topbar-nav {
+  display: flex; justify-content: center; gap: 2px; margin-top: 8px;
+  background: #f1f5f9; border-radius: 8px; padding: 3px;
+  width: fit-content; margin-left: auto; margin-right: auto;
+}
+.topbar-nav a {
+  padding: 5px 16px; border-radius: 6px; font-size: 13px; color: var(--muted);
+  text-decoration: none; font-weight: 500; transition: .15s;
+}
+.topbar-nav a:hover { color: var(--text); }
+.topbar-nav a.on { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.topbar-row2 {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  margin-top: 8px; flex-wrap: wrap;
+}
+.topbar-tabs { display: flex; gap: 2px; background: #f1f5f9; border-radius: 8px; padding: 3px; }
+.topbar-tab {
+  padding: 5px 14px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  border: none; cursor: pointer; background: none; color: var(--muted); transition: .15s;
+}
+.topbar-tab.on { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.topbar-btn {
+  padding: 5px 14px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  background: var(--text); color: #fff; border: none; cursor: pointer; transition: .15s;
+}
+.topbar-btn:hover { background: #334155; }
+/* Source bar */
+.src-bar {
+  max-width: 720px; margin: 0 auto; padding: 10px 24px 0;
+  display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--muted);
+}
+.src-item { display: flex; align-items: center; gap: 4px; }
+.src-dot { width: 5px; height: 5px; border-radius: 50%; }
+.src-dot.ok { background: #22c55e; }
+.src-dot.err { background: #ef4444; }
+/* Cat bar */
+.cat-bar {
+  max-width: 720px; margin: 0 auto; padding: 12px 24px 0;
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.cat-chip {
+  padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border); background: var(--card); color: var(--muted);
+  cursor: pointer; transition: .15s;
+}
+.cat-chip:hover { border-color: #cbd5e1; color: var(--text); }
+.cat-chip.on { background: var(--text); color: #fff; border-color: var(--text); }
+.cat-chip .n { opacity: .5; margin-left: 3px; font-weight: 400; }
+/* Main content */
+.main { max-width: 720px; margin: 0 auto; padding: 20px 24px 80px; }
+/* Stats */
+.stats { display: flex; gap: 20px; padding: 16px 0 24px; }
+.stat { text-align: center; }
+.stat .v { font-size: 26px; font-weight: 700; color: var(--text); letter-spacing: -.03em; }
+.stat .l { font-size: 11px; color: var(--muted); margin-top: 2px; }
+/* Group */
+.group-head {
+  font-size: 13px; font-weight: 600; color: var(--text-sub);
+  padding: 20px 0 10px;
+  display: flex; align-items: center; gap: 8px;
+  letter-spacing: .02em;
+}
+.group-head .line { flex: 1; height: 1px; background: var(--border); margin-left: 8px; }
+.group-head .cnt { font-weight: 400; color: var(--muted); }
+/* Group container */
+.group {
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 18px 8px; margin-bottom: 20px;
+  background: #fafbfc;
+}
+.group .card { border: 1px solid #eef0f5; margin-bottom: 8px; }
+.group .card:last-child { margin-bottom: 0; }
+.group .group-head { padding-top: 0; margin-top: -4px; }
+/* Card */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px 20px; margin-bottom: 10px;
+  transition: .15s;
+}
+.card:hover { border-color: #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,.03); }
+.card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.card-source { font-size: 12px; color: var(--muted); font-weight: 500; }
+.card-tag {
+  font-size: 10px; padding: 2px 8px; border-radius: 4px;
+  background: var(--tag-bg); color: var(--tag-text); font-weight: 500;
+}
+.card-score {
+  font-size: 11px; font-weight: 600; margin-left: auto;
+  padding: 2px 8px; border-radius: 4px;
+}
+.card-score.hi { background: #fef2f2; color: var(--score-hi); }
+.card-score.md { background: #fffbeb; color: var(--score-md); }
+.card-score.lo { background: #f8fafc; color: var(--score-lo); }
+.card-title { font-size: 15px; font-weight: 600; line-height: 1.6; margin-bottom: 4px; }
+.card-title a { color: var(--text); text-decoration: none; }
+.card-title a:hover { color: var(--brand); }
+.card-desc {
+  font-size: 13px; line-height: 1.8; color: var(--text-sub);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-foot { margin-top: 8px; }
+.card-foot a {
+  font-size: 11px; color: var(--muted); text-decoration: none; transition: .15s;
+}
+.card-foot a:hover { color: var(--brand); }
+.card-img { width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-top: 10px; }
+/* Loading */
+.loading { text-align: center; padding: 80px; color: var(--muted); }
+.spinner {
+  width: 24px; height: 24px; border: 2px solid var(--border);
+  border-top-color: var(--brand); border-radius: 50%;
+  animation: spin .7s linear infinite; margin: 0 auto 12px;
+}
+@keyframes spin { to{transform:rotate(360deg)} }
+.empty { text-align: center; padding: 60px; color: var(--muted); font-size: 14px; }
+/* Mobile */
+@media(max-width: 640px) {
+  .topbar { padding: 10px 14px 6px; }
+  .topbar-logo img { height: 28px; }
+  .topbar-sub { font-size: 11px; }
+  .topbar-nav a { padding: 4px 12px; font-size: 12px; }
+  .topbar-tab { padding: 4px 10px; font-size: 11px; }
+  .topbar-btn { padding: 4px 10px; font-size: 11px; }
+  .src-bar { padding: 8px 14px 0; font-size: 10px; }
+  .cat-bar { padding: 8px 14px 0; }
+  .cat-chip { padding: 3px 10px; font-size: 11px; }
+  .main { padding: 14px 14px 60px; }
+  .card { padding: 14px 16px; }
+  .card-title { font-size: 14px; }
+  .group { padding: 12px 12px 4px; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo"><img src="/static/logo.svg" alt="百运网"></div>
+  <div class="topbar-sub">运小星日报</div>
+  <div class="topbar-nav">
+    <a href="/all">全部</a>
+    <a href="/daily">日报</a>
+    <a href="/briefing" class="on">看板</a>
+  </div>
+  <div class="topbar-row2">
+    <div class="topbar-tabs">
+      <button class="topbar-tab on" data-tab="ai" onclick="switchTab('ai')">AI 技术</button>
+      <button class="topbar-tab" data-tab="logistics" onclick="switchTab('logistics')">物流动态</button>
+    </div>
+    <button class="topbar-btn" onclick="loadData()">刷新</button>
+  </div>
+</div>
+
+<div class="src-bar" id="srcBar"></div>
+<div class="cat-bar" id="catBar"></div>
+<div class="main" id="main">
+  <div class="loading"><div class="spinner"></div>正在加载...</div>
+</div>
+
+<script>
+const CAT_CN = { 'ai-models':'模型发布', 'ai-products':'产品更新', 'industry':'行业动态', 'paper':'论文研究', 'tip':'技巧观点' };
+let currentTab = 'ai', allItems = [], activeCat = 'all', counters = {};
+
+function scCls(s) {
+  if (!s) return 'lo';
+  if (s >= 7) return 'hi';
+  if (s >= 5) return 'md';
+  return 'lo';
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.topbar-tab').forEach(t => t.classList.toggle('on', t.dataset.tab===tab));
+  activeCat = 'all'; loadData();
+}
+
+async function loadData() {
+  document.getElementById('main').innerHTML = '<div class="loading"><div class="spinner"></div>正在加载...</div>';
+  document.getElementById('srcBar').innerHTML = '';
+  document.getElementById('catBar').innerHTML = '';
+  counters = {};
+
+  try {
+    if (currentTab === 'ai') {
+      const data = await (await fetch('/api/briefing')).json();
+      allItems = (data.items || []).map((i, idx) => {
+        const cat = i.category || 'other';
+        counters[cat] = (counters[cat]||0) + 1;
+        return { n:idx+1, title:i.title||'', source:i.source||i.sourceName||'?', url:i.url||i.sourceUrl||'#', summary:i.summary||'', score:i.score, category:cat, tags:[cat], image:i.image||i.cover||'' };
+      });
+      renderCats();
+      renderList();
+    } else {
+      const data = await (await fetch('/api/briefing/logistics')).json();
+      const srcList = data.sources || [];
+      allItems = (data.items || []).map((i, idx) => {
+        const cat = i.label || i._task_label || '其他';
+        counters[cat] = (counters[cat]||0) + 1;
+        return { n:idx+1, title:i.title||'', source:i.source_name||i.source_id||'?', url:i.source_url||'#', summary:i.summary||i.ai_summary||'', score:i.score||i.ai_score, category:cat, tags:i.tags||i.ai_tags||[], image:i.image||'' };
+      });
+      let h = '';
+      srcList.forEach(s => { const ok = s.count>0||!s.error; h += `<span class="src-item"><span class="src-dot ${ok?'ok':'err'}"></span>${s.label} ${s.count}条</span>`; });
+      document.getElementById('srcBar').innerHTML = h;
+      renderGrouped();
+    }
+  } catch(e) {
+    document.getElementById('main').innerHTML = `<div class="empty">加载失败: ${e.message}</div>`;
+  }
+}
+
+function renderCats() {
+  const bar = document.getElementById('catBar');
+  let h = `<span class="cat-chip${activeCat==='all'?' on':''}" onclick="filterCat('all')">全部<span class="n">${allItems.length}</span></span>`;
+  for (const [k,v] of Object.entries(counters).sort((a,b)=>b[1]-a[1])) {
+    h += `<span class="cat-chip${activeCat===k?' on':''}" onclick="filterCat('${k}')">${CAT_CN[k]||k}<span class="n">${v}</span></span>`;
+  }
+  bar.innerHTML = h;
+}
+
+function filterCat(cat) { activeCat = cat; renderCats(); renderList(); }
+
+function cardHTML(item) {
+  const sc = scCls(item.score);
+  let desc = (item.summary||'').trim();
+  desc = desc.split(/\n+/).filter(l => l.trim().length > 10).join(' ');
+  if (desc.length > 180) desc = desc.slice(0, 180).replace(/[,，\s]+$/, '') + '...';
+  const tags = (item.tags||[]).filter(t => t && t !== '未AI分析' && t.length < 12).slice(0, 3);
+  const catLabel = item.category && item.category !== '其他' ? item.category : '';
+  const srcUrl = item.url || '#';
+  let host = '';
+  try { host = new URL(srcUrl).hostname.replace('www.', ''); } catch(e){}
+  return `
+  <div class="card">
+    <div class="card-top">
+      <span class="card-source">${item.source}</span>
+      ${catLabel ? `<span class="card-tag">${catLabel}</span>` : ''}
+      ${item.score ? `<span class="card-score ${sc}">${item.score.toFixed(1)}分</span>` : ''}
+    </div>
+    <div class="card-title"><a href="${srcUrl}" target="_blank">${item.title}</a></div>
+    ${desc ? `<div class="card-desc">${desc}</div>` : ''}
+    ${host ? `<div class="card-foot"><a href="${srcUrl}" target="_blank">${host}</a></div>` : ''}
+  </div>`;
+}
+
+function renderList() {
+  const items = activeCat==='all' ? allItems : allItems.filter(i => i.category===activeCat);
+  if (!items.length) { document.getElementById('main').innerHTML = '<div class="empty">暂无数据</div>'; return; }
+  let h = `<div class="stats"><div class="stat"><div class="v">${items.length}</div><div class="l">精选条目</div></div><div class="stat"><div class="v">${new Set(items.map(i=>i.source)).size}</div><div class="l">来源</div></div><div class="stat"><div class="v">${Object.keys(counters).length}</div><div class="l">分类</div></div></div>`;
+  h += items.map(cardHTML).join('');
+  document.getElementById('main').innerHTML = h;
+}
+
+function renderGrouped() {
+  const groups = {};
+  allItems.forEach(i => { const g = i.category||'其他'; groups[g]=groups[g]||[]; groups[g].push(i); });
+  let h = `<div class="stats"><div class="stat"><div class="v">${allItems.length}</div><div class="l">今日条目</div></div><div class="stat"><div class="v">${new Set(allItems.map(i=>i.source)).size}</div><div class="l">来源</div></div><div class="stat"><div class="v">${Object.keys(groups).length}</div><div class="l">分类</div></div></div>`;
+  for (const [label, items] of Object.entries(groups)) {
+    h += `<div class="group"><div class="group-head">${label}<span class="cnt">${items.length} 条</span><span class="line"></span></div>`;
+    h += items.map(cardHTML).join('');
+    h += '</div>';
+  }
+  document.getElementById('main').innerHTML = h || '<div class="empty">暂无数据</div>';
+}
+
+loadData();
+</script>
+</body>
+</html>

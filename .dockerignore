@@ -1,0 +1,31 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# 敏感信息（通过 volume 挂载，不打包进镜像）
+.env
+config/llm.config.json
+
+# 文档
+docs/
+README.md
+DEPLOY.md
+
+# 测试数据
+output/

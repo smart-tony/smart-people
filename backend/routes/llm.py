@@ -23,13 +23,19 @@ VALID_TASK_TYPES = (
     "exchange-rate",
     # 别名：sources.config.json 模块名，自动映射到对应 prompt
     "logistics-daily",
-    "weather-alert",
+    "global-news",
+    "policy-official",
+    "crossborder-platform",
+    "shipping-port",
 )
 
 # 别名映射：将 sources.config 模块名转为标准 prompt key
 TASK_TYPE_ALIASES: dict[str, str] = {
     "logistics-daily": "cn-logistics-industry",
-    "weather-alert": "global-logistics-risk",
+    "global-news": "global-logistics-risk",
+    "policy-official": "global-logistics-risk",
+    "crossborder-platform": "cn-logistics-industry",
+    "shipping-port": "cn-logistics-industry",
 }
 
 

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>全部动态 · 运小星日报</title>
+<style>
+:root {
+  --brand: #0033A8; --brand-dark: #002280; --brand-light: #e8efff;
+  --text: #1a1a2e; --text-sub: #4a5568; --muted: #94a3b8;
+  --border: #eef0f5; --bg: #ffffff;
+  --blue: #0033A8; --blue-bg: #e8efff;
+  --gold: #F5A623;
+  --tag-bg: #f0f4ff; --tag-text: #0033A8;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+  background: var(--bg); color: var(--text); line-height:1.8;
+  -webkit-font-smoothing: antialiased;
+}
+.header {
+  position:sticky; top:0; z-index:100; background:#fff;
+  border-bottom:1px solid var(--border); padding:14px 0;
+}
+.header-inner {
+  max-width:900px; margin:0 auto; padding:0 24px;
+  display:flex; align-items:center; gap:16px;
+}
+.brand { display:flex; align-items:center; gap:10px; }
+.brand img { height:30px; width:auto; }
+.brand-text { font-size:15px; font-weight:600; color:var(--text); }
+.nav { display:flex; gap:4px; }
+.nav a {
+  padding:6px 14px; border-radius:6px; font-size:13px;
+  color:var(--muted); text-decoration:none; font-weight:500; transition:.15s;
+}
+.nav a:hover { color:var(--text); background:#f8f9fa; }
+.nav a.active { color:var(--blue); background:var(--blue-bg); font-weight:600; }
+.mode-switch {
+  display:flex; gap:2px; margin-left:auto; background:#f1f5f9; border-radius:8px; padding:3px;
+}
+.mode-btn {
+  padding:5px 14px; border-radius:6px; font-size:12px; font-weight:500;
+  border:none; cursor:pointer; transition:.15s; background:none; color:var(--muted);
+}
+.mode-btn.active { background:#fff; color:var(--blue); box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+.btn-refresh {
+  padding:6px 14px; border-radius:6px; font-size:12px; font-weight:500;
+  background:var(--blue); color:#fff; border:none; cursor:pointer;
+}
+/* 主体 */
+.main { max-width:900px; margin:0 auto; padding:16px 24px 80px; }
+/* 筛选 */
+.filters { display:flex; gap:8px; flex-wrap:wrap; padding:12px 0; align-items:center; border-bottom:1px solid var(--border); }
+.f-chip {
+  padding:5px 12px; border-radius:20px; font-size:12px; cursor:pointer; font-weight:500;
+  background:none; border:1px solid var(--border); color:var(--muted); transition:.15s;
+}
+.f-chip:hover { border-color:var(--blue); color:var(--blue); }
+.f-chip.active { background:var(--text); color:#fff; border-color:var(--text); }
+.search-box {
+  margin-left:auto; display:flex; align-items:center;
+  border:1px solid var(--border); border-radius:6px; padding:4px 10px;
+}
+.search-box input { border:none; outline:none; font-size:12px; color:var(--text); background:none; width:130px; }
+/* 分组 */
+.group-head {
+  font-size:13px; font-weight:700; color:var(--text); padding:16px 0 8px;
+  display:flex; align-items:center; gap:8px;
+}
+.group-head::before {
+  content:""; width:3px; height:12px; border-radius:2px; background:var(--blue);
+}
+.group-head .cnt { font-size:11px; color:var(--muted); font-weight:400; margin-left:auto; }
+/* 行 */
+.row {
+  display:flex; align-items:baseline; gap:10px; padding:10px 0;
+  border-bottom:1px solid var(--border); cursor:pointer; transition:.08s;
+}
+.row:hover { background:#fafbfe; }
+.row-time { font-size:11px; color:var(--muted); min-width:38px; font-variant-numeric:tabular-nums; flex-shrink:0; }
+.row-src {
+  font-size:10px; padding:2px 6px; border-radius:3px; font-weight:600;
+  min-width:44px; text-align:center; flex-shrink:0;
+  background:var(--blue-bg); color:var(--blue);
+}
+.row-title { font-size:13px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.row-title a { color:var(--text); text-decoration:none; }
+.row-title a:hover { color:var(--blue); }
+.row-img { width:44px; height:30px; border-radius:4px; object-fit:cover; flex-shrink:0; }
+.row-expand { width:100%; font-size:12px; color:var(--text-sub); line-height:1.8; padding:6px 0 6px 48px; display:none; }
+.row-link { width:100%; font-size:11px; padding:2px 0 4px 48px; display:none; }
+.row-link a { color:var(--brand); text-decoration:none; opacity:.75; }
+.row-link a:hover { opacity:1; text-decoration:underline; }
+.row.open .row-expand, .row.open .row-link { display:block; }
+/* 加载 */
+.loading { text-align:center; padding:80px; color:var(--muted); }
+.spinner {
+  width:24px; height:24px; border:2px solid var(--border);
+  border-top-color:var(--blue); border-radius:50%;
+  animation:spin .7s linear infinite; margin:0 auto 12px;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.empty { text-align:center; padding:60px; color:var(--muted); font-size:13px; }
+.info { font-size:12px; color:var(--muted); padding:8px 0; }
+@media(max-width:640px) {
+  .header-inner { flex-wrap:wrap; gap:10px; }
+  .mode-switch { order:10; width:100%; justify-content:center; }
+  .row-title { font-size:12px; }
+  .main { padding:12px 16px 60px; }
+}
+</style>
+</head>
+<body>
+
+<div style="background:linear-gradient(135deg,var(--brand),var(--brand-dark));padding:20px 24px;display:flex;align-items:center;gap:14px">
+  <img src="/yunxiaoxing.png" alt="运小星" style="height:48px;filter:drop-shadow(0 3px 8px rgba(0,0,0,0.2))">
+  <div style="color:#fff;flex:1"><div style="font-size:16px;font-weight:700">运小星日报</div><div style="font-size:11px;opacity:.8">百运网 · 全部动态一览</div></div>
+  <img src="/logo.png" alt="百运网" style="height:28px;filter:brightness(0) invert(1)">
+</div>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="brand">
+      <img src="/static/logo.svg" alt="百运网" style="height:28px">
+      <span class="brand-text">运小星日报</span>
+    </div>
+    <div class="nav">
+      <a href="/all" class="active">全部</a>
+      <a href="/daily">日报</a>
+      <a href="/briefing">看板</a>
+    </div>
+    <button class="btn-refresh" onclick="loadAll()">刷新</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="filters" id="filters">
+    <span class="f-chip active" data-ch="all" onclick="setFilter('all')">全部</span>
+    <div class="search-box">
+      <input type="text" placeholder="搜索标题…" id="searchInp" oninput="render()">
+    </div>
+  </div>
+  <div class="info" id="info"></div>
+  <div id="feed"><div class="loading"><div class="spinner"></div>加载中…</div></div>
+</div>
+
+<script>
+let allData=[], filterCh='all', currentMode='logistics';
+
+const LABELS = {
+  'logistics-daily':'物流资讯','global-news':'国际贸易','policy-official':'官方政策',
+  'crossborder-platform':'跨境平台','shipping-port':'航运港口',
+  'ai-models':'模型发布','ai-products':'产品更新','industry':'行业动态','paper':'论文研究','tip':'技巧观点',
+};
+
+function switchMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode===mode));
+  filterCh = 'all';
+  loadAll();
+}
+function setFilter(ch) {
+  filterCh = ch;
+  document.querySelectorAll('.f-chip').forEach(c => c.classList.toggle('active', c.dataset.ch===ch));
+  render();
+}
+
+async function loadAll() {
+  document.getElementById('feed').innerHTML = '<div class="loading"><div class="spinner"></div>加载中…</div>';
+  try {
+    if (currentMode === 'logistics') {
+      const data = await (await fetch('/api/briefing/logistics')).json();
+      allData = (data.items||[]).map(i => ({
+        title:i.title||'', source:i.source_name||'?', url:i.source_url||'#',
+        summary:i.summary||'', task:i.task||'', label:LABELS[i.task]||'资讯',
+        image:i.image||'',
+        time: new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}),
+      }));
+      document.getElementById('info').textContent = `${allData.length} 条物流动态`;
+    } else {
+      const data = await (await fetch('/api/briefing')).json();
+      allData = (data.items||[]).map(i => ({
+        title:i.title||'', source:i.source||i.sourceName||'?', url:i.url||i.sourceUrl||'#',
+        summary:i.summary||'', task:i.category||'other', label:LABELS[i.category]||'资讯',
+        image:i.image||i.cover||i.thumbnail||'',
+        time: new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}),
+      }));
+      document.getElementById('info').textContent = `${allData.length} 条 AI 精选`;
+    }
+    buildFilters();
+    render();
+  } catch(e) {
+    document.getElementById('feed').innerHTML = `<div class="empty">加载失败: ${e.message}</div>`;
+  }
+}
+
+function buildFilters() {
+  const cats = {};
+  allData.forEach(i => { const l = i.label; cats[l] = (cats[l]||0)+1; });
+  let html = `<span class="f-chip active" data-ch="all" onclick="setFilter('all')">全部</span>`;
+  for (const [k,v] of Object.entries(cats).sort((a,b)=>b[1]-a[1])) {
+    html += `<span class="f-chip" data-ch="${k}" onclick="setFilter('${k}')">${k} ${v}</span>`;
+  }
+  html += `<div class="search-box"><input type="text" placeholder="搜索…" id="searchInp" oninput="render()"></div>`;
+  document.getElementById('filters').innerHTML = html;
+}
+
+function proxyImg(url){
+  if(!url||!url.startsWith('http'))return'';
+  if(/mmbiz\.qpic\.cn|wechat|weixin/.test(url)) return'/api/img-proxy?url='+encodeURIComponent(url);
+  return url;
+}
+
+function render() {
+  const q = (document.getElementById('searchInp')?.value||'').toLowerCase();
+  let items = allData;
+  if (filterCh !== 'all') items = items.filter(i => i.label === filterCh);
+  if (q) items = items.filter(i => i.title.toLowerCase().includes(q) || (i.summary||'').toLowerCase().includes(q));
+
+  if (!items.length) { document.getElementById('feed').innerHTML = '<div class="empty">暂无匹配</div>'; return; }
+
+  const groups = {};
+  items.forEach(i => { const g = i.label; groups[g]=groups[g]||[]; groups[g].push(i); });
+
+  let html = '';
+  for (const [label, gItems] of Object.entries(groups)) {
+    html += `<div class="group-head">${label}<span class="cnt">${gItems.length}</span></div>`;
+    gItems.forEach(item => {
+      const img = proxyImg(item.image || '');
+      const hasImg = img && img.startsWith('http');
+      const srcUrl = item.url || '#';
+      let hostname = '';
+      try { hostname = new URL(srcUrl).hostname; } catch(e){}
+      let summary = (item.summary||'').trim();
+      if (summary.length > 200) summary = summary.slice(0,200).replace(/[，、\s]+$/,'') + '…';
+      html += `
+      <div class="row" onclick="this.classList.toggle('open')">
+        <span class="row-time">${item.time}</span>
+        <span class="row-src">${item.label}</span>
+        <span class="row-title"><a href="${srcUrl}" target="_blank" onclick="event.stopPropagation()">${item.title}</a></span>
+        ${hasImg?`<img class="row-img" src="${img}" loading="lazy" onerror="this.style.display='none'">`:''}
+        ${summary?`<div class="row-expand">${summary}</div>`:''}
+        ${srcUrl!=='#'?`<div class="row-link"><a href="${srcUrl}" target="_blank" onclick="event.stopPropagation()">来源：${hostname}</a></div>`:''}
+      </div>`;
+    });
+  }
+  document.getElementById('feed').innerHTML = html;
+}
+
+loadAll();
+</script>
+</body>
+</html>

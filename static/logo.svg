@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" fill="none">
+  <!-- 圆形图标 -->
+  <circle cx="36" cy="40" r="32" stroke="#003399" stroke-width="5" fill="none"/>
+  <path d="M16 30 h40 M16 50 h40" stroke="#003399" stroke-width="5" stroke-linecap="round"/>
+  <path d="M20 18 Q36 12 52 18" stroke="#003399" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <!-- 百运网文字 -->
+  <text x="78" y="38" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="32" font-weight="800" fill="#003399">百运网</text>
+  <!-- BY56.COM -->
+  <text x="78" y="62" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#003399" letter-spacing="1">BY56.COM</text>
+</svg>

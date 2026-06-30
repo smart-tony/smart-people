@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>晨间星闻 · 管理后台</title>
+<style>
+:root {
+  --blue: #1A5FDC; --blue-dark: #1250b5; --bg: #f0f4fb;
+  --card: #fff; --text: #1e293b; --muted: #94a3b8; --border: #e2e8f0;
+  --ok: #059669; --err: #dc2626; --warn: #d97706;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+.topbar {
+  background:rgba(255,255,255,.92); backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border); padding:14px 24px;
+  display:flex; align-items:center; gap:16px;
+}
+.topbar h1 { font-size:18px; color:var(--blue-dark); }
+.topbar a { color:var(--muted); text-decoration:none; font-size:13px; }
+.topbar a:hover { color:var(--blue); }
+.main { max-width:720px; margin:0 auto; padding:24px 16px; }
+/* 状态卡片 */
+.status-bar {
+  display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px;
+}
+.stat-card {
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:16px 20px; flex:1; min-width:100px; text-align:center;
+}
+.stat-card .num { font-size:28px; font-weight:700; color:var(--blue); }
+.stat-card .lbl { font-size:12px; color:var(--muted); margin-top:4px; }
+.stat-card .time { font-size:11px; color:var(--muted); margin-top:2px; }
+/* 模块列表 */
+.section-title {
+  font-size:16px; font-weight:700; margin-bottom:16px;
+  display:flex; align-items:center; gap:8px;
+}
+.module-list { display:flex; flex-direction:column; gap:10px; margin-bottom:24px; }
+.module-row {
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:16px 20px; display:flex; align-items:center; gap:14px;
+  transition:.15s;
+}
+.module-row:hover { border-color:#ccddf5; }
+.module-icon { font-size:20px; }
+.module-info { flex:1; }
+.module-name { font-weight:600; font-size:15px; }
+.module-meta { font-size:12px; color:var(--muted); margin-top:2px; }
+.module-status {
+  font-size:12px; padding:4px 12px; border-radius:20px; font-weight:500;
+}
+.module-status.ok { background:#ecfdf5; color:var(--ok); }
+.module-status.err { background:#fef2f2; color:var(--err); }
+.module-status.pending { background:#f8fafc; color:var(--muted); }
+.btn {
+  padding:8px 18px; border-radius:8px; font-size:13px; cursor:pointer; border:none;
+  font-weight:500; transition:.15s;
+}
+.btn-scrape { background:var(--blue); color:#fff; box-shadow:0 2px 6px rgba(26,95,220,0.2); }
+.btn-scrape:hover { background:var(--blue-dark); transform:translateY(-1px); }
+.btn-scrape:disabled { background:#cbd5e0; cursor:not-allowed; transform:none; box-shadow:none; }
+.btn-all {
+  background:linear-gradient(135deg,var(--blue),var(--blue-dark)); color:#fff;
+  padding:12px 28px; font-size:15px; border-radius:10px;
+  box-shadow:0 4px 12px rgba(26,95,220,0.3); width:100%; margin-bottom:24px;
+}
+.btn-all:hover { transform:translateY(-1px); box-shadow:0 6px 16px rgba(26,95,220,0.4); }
+.btn-all:disabled { background:#cbd5e0; cursor:not-allowed; transform:none; box-shadow:none; }
+/* 日志区 */
+.log-area {
+  background:#1e293b; color:#e2e8f0; border-radius:12px; padding:20px;
+  font-family:"SF Mono","Monaco","Menlo",monospace; font-size:12px;
+  line-height:1.8; max-height:400px; overflow-y:auto; white-space:pre-wrap;
+}
+.log-area .ts { color:#64748b; }
+.log-area .ok { color:#34d399; }
+.log-area .err { color:#f87171; }
+.log-area .warn { color:#fbbf24; }
+.log-line { margin-bottom:2px; }
+.spin { display:inline-block; animation:spin 1s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg)} }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>晨间星闻 · 管理后台</h1>
+  <a href="/briefing" target="_blank">查看看板 →</a>
+  <a href="/daily" target="_blank">晨报 →</a>
+  <a href="/all" target="_blank">全部动态 →</a>
+</div>
+
+<div class="main">
+
+  <div class="status-bar" id="statusBar">
+    <div class="stat-card"><div class="num" id="statTotal">-</div><div class="lbl">缓存总数</div></div>
+    <div class="stat-card"><div class="num" id="statOk">-</div><div class="lbl">来源正常</div></div>
+    <div class="stat-card"><div class="num" id="statTime">-</div><div class="lbl">最后更新</div><div class="time" id="statFullTime"></div></div>
+  </div>
+
+  <button class="btn btn-all" onclick="scrapeAll()" id="btnAll">抓取全部 6 个模块</button>
+
+  <div class="section-title">📡 模块抓取</div>
+  <div class="module-list" id="moduleList"></div>
+
+  <div class="section-title">🗑 缓存管理</div>
+  <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
+    <button class="btn btn-scrape" onclick="clearDrafts(7)" style="background:#64748b;">清理 7 天前草稿</button>
+    <button class="btn btn-scrape" onclick="clearDrafts(1)" style="background:#94a3b8;">清理昨天之前</button>
+    <span style="font-size:12px;color:var(--muted);align-self:center;" id="cacheInfo"></span>
+  </div>
+
+  <div class="section-title">📋 运行日志</div>
+  <div class="log-area" id="logArea">
+    <div class="log-line"><span class="ts">-- 等待操作 --</span></div>
+  </div>
+
+</div>
+
+<script>
+const MODULES = [
+  { key:'logistics-daily',      icon:'行', name:'行业动态｜物流资讯',     desc:'跨境电商新闻 / WL123 / 出海网 / 物流巴巴' },
+  { key:'crossborder-platform', icon:'行', name:'行业动态｜跨境平台',     desc:'雨果 / 亿邦 / 卖家之家 / AMZ123 / 跨境知道' },
+  { key:'shipping-port',        icon:'行', name:'行业动态｜航运港口',     desc:'航运界 / 港口协会 / 国际海运网 / 维运网' },
+  { key:'by56-wiki',            icon:'行', name:'行业动态｜百运百科',     desc:'百运官方百科 · 空运/海运/快递/FBA/清关' },
+  { key:'global-news',          icon:'政', name:'政策动态｜地缘与国际风险', desc:'WTO / UKMTO / 能源与地缘风险来源' },
+  { key:'policy-official',      icon:'政', name:'政策动态｜关税与官方政策', desc:'商务部 / 自贸区 / 贸易救济 / 关税相关来源' },
+];
+
+function log(msg, cls='') {
+  const now = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const area = document.getElementById('logArea');
+  area.innerHTML += `<div class="log-line"><span class="ts">[${now}]</span> <span class="${cls}">${msg}</span></div>`;
+  area.scrollTop = area.scrollHeight;
+}
+
+async function loadStatus() {
+  try {
+    const resp = await fetch('/api/admin/status');
+    const data = await resp.json();
+    if (!data.cache_exists) {
+      document.getElementById('statTotal').textContent = '0';
+      document.getElementById('statOk').textContent = '-';
+      document.getElementById('statTime').textContent = '无缓存';
+      document.getElementById('statFullTime').textContent = '';
+      MODULES.forEach(m => renderModule(m, {count:0, ok:false}));
+      return;
+    }
+    document.getElementById('statTotal').textContent = data.total;
+    const okCount = data.sources.filter(s=>s.ok).length;
+    document.getElementById('statOk').textContent = `${okCount}/${data.sources.length}`;
+    if (data.updated_at) {
+      const d = new Date(data.updated_at);
+      document.getElementById('statTime').textContent = d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+      document.getElementById('statFullTime').textContent = d.toLocaleString('zh-CN');
+    }
+    const sourceMap = {};
+    data.sources.forEach(s => { sourceMap[s.task_type] = s; });
+    MODULES.forEach(m => renderModule(m, sourceMap[m.key] || {count:0, ok:false}));
+  } catch(e) {
+    log(`加载状态失败: ${e.message}`, 'err');
+  }
+}
+
+function renderModule(m, src) {
+  const count = src.count || 0;
+  const ok = src.ok;
+  const statusCls = ok ? 'ok' : (count > 0 ? 'ok' : 'pending');
+  const statusText = ok ? `✅ ${count} 条` : (count > 0 ? `⚠️ ${count} 条` : '⏳ 待抓取');
+  document.getElementById(m.key)?.remove();
+  const list = document.getElementById('moduleList');
+  const div = document.createElement('div');
+  div.id = m.key;
+  div.className = 'module-row';
+  div.innerHTML = `
+    <div class="module-icon">${m.icon}</div>
+    <div class="module-info">
+      <div class="module-name">${m.name}</div>
+      <div class="module-meta">${m.desc}</div>
+    </div>
+    <span class="module-status ${statusCls}" id="s_${m.key}">${statusText}</span>
+    <button class="btn btn-scrape" onclick="scrapeOne('${m.key}')" id="btn_${m.key}">抓取</button>
+  `;
+  list.appendChild(div);
+}
+
+async function scrapeOne(module) {
+  const btn = document.getElementById('btn_'+module);
+  const status = document.getElementById('s_'+module);
+  btn.disabled = true;
+  btn.textContent = '抓取中...';
+  status.textContent = '⏳ 抓取中...';
+  status.className = 'module-status pending';
+  log(`开始抓取: ${module}`, 'warn');
+  try {
+    const resp = await fetch('/api/admin/scrape/'+module, { method:'POST' });
+    const data = await resp.json();
+    if (data.ok) {
+      status.textContent = `✅ ${data.count} 条`;
+      status.className = 'module-status ok';
+      log(`✅ ${module}: ${data.count} 条 (缓存共 ${data.total} 条)`, 'ok');
+    } else {
+      status.textContent = `❌ 失败`;
+      status.className = 'module-status err';
+      log(`❌ ${module}: ${data.error}`, 'err');
+    }
+  } catch(e) {
+    status.textContent = '❌ 异常';
+    status.className = 'module-status err';
+    log(`❌ ${module}: ${e.message}`, 'err');
+  }
+  btn.disabled = false;
+  btn.textContent = '抓取';
+  loadStatus();
+}
+
+async function scrapeAll() {
+  const btn = document.getElementById('btnAll');
+  btn.disabled = true;
+  btn.textContent = '⏳ 正在抓取全部模块...';
+  log('开始抓取全部 6 个模块...', 'warn');
+  try {
+    const resp = await fetch('/api/admin/scrape-all', { method:'POST' });
+    const data = await resp.json();
+    if (data.ok) {
+      log(`✅ 全部完成: ${data.total} 条`, 'ok');
+      data.sources.forEach(s => {
+        log(`  ${s.label}: ${s.ok?'✅':'❌'} ${s.count} 条${s.error?' ('+s.error+')':''}`, s.ok?'ok':'err');
+      });
+    } else {
+      log(`❌ 抓取失败: ${data.error}`, 'err');
+    }
+  } catch(e) {
+    log(`❌ 异常: ${e.message}`, 'err');
+  }
+  btn.disabled = false;
+  btn.textContent = '抓取全部 6 个模块';
+  loadStatus();
+}
+
+async function clearDrafts(days) {
+  log(`🗑 清理 ${days} 天前的草稿...`, 'warn');
+  try {
+    const resp = await fetch(`/api/admin/clear-drafts?days=${days}`, { method:'POST' });
+    const data = await resp.json();
+    log(`✅ ${data.message}`, 'ok');
+    updateCacheInfo();
+  } catch(e) {
+    log(`❌ 清理失败: ${e.message}`, 'err');
+  }
+}
+
+async function updateCacheInfo() {
+  try {
+    const resp = await fetch('/api/admin/status');
+    const data = await resp.json();
+    if (data.cache_exists) {
+      document.getElementById('cacheInfo').textContent = `主缓存: ${data.total} 条`;
+    }
+  } catch(e) {}
+}
+
+// 初始化时也加载缓存信息
+const origLoadStatus = loadStatus;
+loadStatus = async function() {
+  await origLoadStatus();
+  updateCacheInfo();
+};
+
+loadStatus();
+</script>
+</body>
+</html>

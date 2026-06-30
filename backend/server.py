@@ -1,55 +1,35 @@
 """
-weekly-push-tool 后端服务
-Phase 1: 骨架 — 静态文件服务 + 健康检查 + 配置加载
-启动: cd backend && python server.py
-访问: http://localhost:8000
+晨间星闻 后端服务
+启动: cd backend && uvicorn server:app --host 0.0.0.0 --port 8000
+访问: http://localhost:8000/briefing
 """
-
-import json
+import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Depends
+BACKEND_DIR = Path(__file__).resolve().parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from routes.llm import router as llm_router
 from routes.scrape import router as scrape_router
-from routes.workspace import router as workspace_router
-from settings import get_cors_origins, get_server_host, get_server_port, load_llm_config, require_auth
+from routes.briefing import router as briefing_router
+from routes.admin import router as admin_router
+from settings import get_cors_origins, load_llm_config
 
-# ── 路径常量 ──────────────────────────────────────────────
-ROOT = Path(__file__).resolve().parent.parent          # weekly-push-tool/
+ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
-TEMPLATES_DIR = ROOT / "templates"
+STATIC_DIR = ROOT / "static"
 
-# ── 配置加载 ──────────────────────────────────────────────
-def load_config(filename: str, default=None) -> dict:
-    """加载 config/ 下的 JSON 文件，不存在则返回默认值"""
-    path = CONFIG_DIR / filename
-    if path.exists():
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return default if default is not None else {}
+app = FastAPI(title="晨间星闻", version="1.0")
 
+if STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-def count_sources(sources_config: dict) -> int:
-    """统计来源配置数量，兼容按分类分组的结构。"""
-    sources_val = sources_config.get("sources")
-    if isinstance(sources_val, list):
-        return len(sources_val)
-    if isinstance(sources_val, dict):
-        return sum(len(v) for v in sources_val.values() if isinstance(v, list))
-    return 0
-
-# ── 应用实例 ──────────────────────────────────────────────
-app = FastAPI(
-    title="Weekly Push Tool API",
-    version="0.1.0",
-    description="百运科技 · 内容推送工作台后端"
-)
-
-# CORS — 允许前端跨域调用
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_origins(),
@@ -57,73 +37,159 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册路由
 app.include_router(llm_router)
 app.include_router(scrape_router)
-app.include_router(workspace_router)
+app.include_router(briefing_router)
+app.include_router(admin_router)
 
-# ── API 路由 ──────────────────────────────────────────────
+
+@app.on_event("startup")
+async def _startup():
+    """服务启动：预热缓存 + 启动定时刷新"""
+    import asyncio
+
+    async def _warm():
+        from routes.briefing import get_briefing, get_logistics
+        try:
+            await get_briefing(refresh=False)
+        except Exception:
+            pass
+        try:
+            await get_logistics(refresh=False)
+        except Exception:
+            pass
+
+    asyncio.ensure_future(_warm())
+    asyncio.ensure_future(_auto_refresh_loop())
+
+
+async def _auto_refresh_loop():
+    """后台定时刷新：每 2 小时自动抓取物流数据，确保数据不中断。
+    即使无人访问，数据库中也始终有最新数据。
+    """
+    import asyncio
+    from routes.briefing import _schedule_logistics_refresh
+
+    await asyncio.sleep(60)  # 启动后 60 秒再开始，避免和预热冲突
+
+    while True:
+        try:
+            _schedule_logistics_refresh("auto_refresh_loop")
+        except Exception:
+            pass
+        await asyncio.sleep(7200)  # 每 2 小时
+
 
 @app.get("/api/health")
-def health():
-    """健康检查 + 显示已加载的配置状态"""
-    llm_config = load_llm_config()
-    sources_config = load_config("sources.config.json")
-    api_key = llm_config.get("api_key", "")
-    llm_ok = bool(api_key) and api_key != "***"
+async def health():
+    import time
+    from routes.briefing import _cache_logistics, _cache_time_logistics, _logistics_refresh_task
+
+    llm = load_llm_config()
+    api_key = llm.get("api_key", "")
+
+    logistics_age = int(time.time() - _cache_time_logistics) if _cache_time_logistics else None
+    logistics_items = len(_cache_logistics.get("items", [])) if _cache_logistics else 0
+    logistics_healthy = logistics_items > 0 and (logistics_age is not None and logistics_age < 14400)
+
+    db_today_count = 0
+    try:
+        from db import count_by_task
+        from datetime import datetime, timezone
+        from fastapi.concurrency import run_in_threadpool
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        counts = await run_in_threadpool(count_by_task, today)
+        db_today_count = sum(counts.values()) if counts else 0
+    except Exception:
+        pass
 
     return {
-        "status": "ok",
-        "version": "0.1.0",
-        "llm_configured": llm_ok,
-        "sources_count": count_sources(sources_config),
+        "status": "ok" if logistics_healthy else "degraded",
+        "llm_configured": bool(api_key) and api_key != "***",
+        "logistics": {
+            "healthy": logistics_healthy,
+            "cache_items": logistics_items,
+            "cache_age_sec": logistics_age,
+            "db_today_items": db_today_count,
+            "refresh_running": bool(_logistics_refresh_task and not _logistics_refresh_task.done()),
+        },
     }
 
 
-@app.get("/api/config")
-def get_config():
-    """查看所有配置（脱敏）"""
-    llm = load_config("llm.config.json")
-    sources = load_config("sources.config.json")
-
-    # 脱敏 API key
-    if "api_key" in llm:
-        key = llm["api_key"]
-        llm["api_key"] = key[:4] + "****" + key[-4:] if len(key) > 8 else "****"
-
-    return {
-        "llm": llm,
-        "sources": sources,
-    }
-
-
-@app.post("/api/config/sources")
-def save_sources_config(payload: dict, username: str | None = Depends(require_auth)):
-    """保存来源配置到 sources.config.json（需要认证，如已配置 APP_USERNAME）"""
-    if not isinstance(payload, dict):
-        raise HTTPException(400, "来源配置必须是 JSON 对象")
-    path = CONFIG_DIR / "sources.config.json"
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    return {"success": True, "path": str(path)}
+@app.get("/api/img-proxy")
+async def img_proxy(url: str = ""):
+    """图片代理：绕过微信等平台的防盗链（去掉 Referer）"""
+    if not url or not url.startswith("http"):
+        from fastapi.responses import Response
+        return Response(status_code=400)
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+                "Referer": "",
+            })
+            resp.raise_for_status()
+            ct = resp.headers.get("content-type", "image/jpeg")
+            from fastapi.responses import Response
+            return Response(content=resp.content, media_type=ct)
+    except Exception:
+        from fastapi.responses import Response
+        return Response(status_code=404)
 
 
-# ── 静态文件（放在最后，避免覆盖 API 路由） ──────────────
+@app.get("/yunxiaoxing.png")
+def serve_mascot():
+    for p in _MASCOT_CANDIDATES:
+        if p.exists():
+            return FileResponse(p, media_type="image/png")
+    return FileResponse(STATIC_DIR / "yunxiaoxing.png")
+
+
+_LOGO_CANDIDATES = [
+    STATIC_DIR / "logo.png",
+    Path("/Users/z/Desktop/百运网 - LOGO - 全.png"),
+    ROOT / "logo.png",
+]
+_MASCOT_CANDIDATES = [
+    STATIC_DIR / "yunxiaoxing.png",
+    Path("/Users/z/Desktop/运小星/运小星图片/ChatGPT Image 2026年6月4日 15_42_32.png"),
+    ROOT / "yunxiaoxing.png",
+]
+
+
+@app.get("/logo.png")
+def serve_logo():
+    for p in _LOGO_CANDIDATES:
+        if p.exists():
+            return FileResponse(p, media_type="image/png")
+    svg_path = STATIC_DIR / "logo.svg"
+    if svg_path.exists():
+        return FileResponse(svg_path, media_type="image/svg+xml")
+    return FileResponse(STATIC_DIR / "logo.png")
+
 
 @app.get("/")
-def serve_index():
-    return FileResponse(ROOT / "index.html")
+@app.get("/daily")
+def serve_daily():
+    return FileResponse(ROOT / "daily.html")
+
+@app.get("/briefing")
+def serve_briefing():
+    return FileResponse(ROOT / "briefing.html")
+
+@app.get("/all")
+def serve_all():
+    return FileResponse(ROOT / "all.html")
+
+@app.get("/admin")
+def serve_admin():
+    return FileResponse(ROOT / "admin.html")
 
 
-# 挂载根目录的静态资源
-app.mount("/", StaticFiles(directory=str(ROOT)), name="static")
-
-
-# ── 直接运行入口 ──────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    print(f"\n  🔧 weekly-push-tool backend")
-    print(f"  📂 {ROOT}")
-    print(f"  🌐 http://localhost:8000")
-    print(f"  📋 http://localhost:8000/docs  (API 文档)\n")
+    from settings import get_server_host, get_server_port
+    print(f"\n  晨间星闻")
+    print(f"  🌐 http://localhost:8000/briefing\n")
     uvicorn.run(app, host=get_server_host(), port=get_server_port(), log_level="info")

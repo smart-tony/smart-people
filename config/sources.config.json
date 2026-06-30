@@ -1,88 +1,6 @@
 {
   "_comment": "网站内容来源 — 按推送类型分类。llm_task 指定 LLM 处理用哪个 prompt。",
   "sources": {
-    "ai-weekly": [
-      {
-        "id": "openai",
-        "name": "OpenAI Blog",
-        "url": "https://openai.com/index/",
-        "enabled": true,
-        "llm_task": "ai-weekly",
-        "note": "Codex/GPT/机器人 官方发布"
-      },
-      {
-        "id": "venturebeat",
-        "name": "VentureBeat AI",
-        "url": "https://venturebeat.com/category/ai/",
-        "enabled": true,
-        "llm_task": "ai-weekly",
-        "note": "AI 创投 + 模型评测"
-      },
-      {
-        "id": "jiqizhixin",
-        "name": "机器之心",
-        "url": "https://www.jiqizhixin.com",
-        "enabled": true,
-        "llm_task": "ai-weekly",
-        "note": "中文 AI 深度报道"
-      },
-      {
-        "id": "qbitai",
-        "name": "量子位",
-        "url": "https://www.qbitai.com",
-        "enabled": true,
-        "llm_task": "ai-weekly",
-        "note": "中文 AI 快讯"
-      },
-      {
-        "id": "huxiu",
-        "name": "虎嗅",
-        "url": "https://www.huxiu.com",
-        "enabled": true,
-        "llm_task": "ai-weekly",
-        "note": "科技商业评论"
-      },
-      {
-        "id": "microsoft_ai",
-        "name": "Microsoft AI Blog",
-        "url": "https://microsoft.ai/news/",
-        "enabled": true,
-        "llm_task": "ai-weekly",
-        "note": "微软 AI / Build / MAI 模型"
-      },
-      {
-        "id": "google_research",
-        "name": "Google Research Blog",
-        "url": "https://research.google/blog/",
-        "enabled": true,
-        "llm_task": "ai-weekly",
-        "note": "Gemini / RAG / Agent 研究"
-      },
-      {
-        "id": "nvidia_dev",
-        "name": "NVIDIA Developer Blog",
-        "url": "https://developer.nvidia.com/blog/",
-        "enabled": true,
-        "llm_task": "ai-weekly",
-        "note": "Nemotron / 推理模型"
-      },
-      {
-        "id": "anthropic",
-        "name": "Anthropic Research",
-        "url": "https://www.anthropic.com/research/",
-        "enabled": true,
-        "llm_task": "ai-weekly",
-        "note": "Claude 模型研究"
-      },
-      {
-        "id": "xai",
-        "name": "xAI Blog",
-        "url": "https://x.ai/news/",
-        "enabled": true,
-        "llm_task": "ai-weekly",
-        "note": "Grok 更新"
-      }
-    ],
     "logistics-daily": [
       {
         "id": "kjdsnews",
@@ -93,64 +11,334 @@
         "note": "跨境物流综合资讯 + 政策动态"
       },
       {
-        "id": "sofreight",
-        "name": "搜航网",
-        "url": "https://www.sofreight.com/news",
-        "enabled": false,
-        "llm_task": "global-logistics-risk",
-        "note": "航运价格 + 港口动态"
+        "id": "wl123_news",
+        "name": "WL123 物流资讯",
+        "url": "https://www.wl123.com/wu-liu-zi-xun",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "货代、船公司、港口、政策"
       },
       {
-        "id": "jctrans",
-        "name": "锦程物流网",
-        "url": "https://www.jctrans.com/news",
-        "enabled": false,
+        "id": "chwang_daily",
+        "name": "出海网日报",
+        "url": "https://www.chwang.com/daily",
+        "enabled": true,
         "llm_task": "cn-logistics-industry",
-        "note": "跨境物流综合资讯"
+        "note": "每日精选15条（从日报h2提取，不爬详情页）"
       },
       {
-        "id": "customs_news",
-        "name": "海关总署公告",
-        "url": "http://www.customs.gov.cn",
-        "enabled": false,
+        "id": "chwang",
+        "name": "出海网快讯",
+        "url": "https://www.chwang.com/news",
+        "enabled": true,
         "llm_task": "cn-logistics-industry",
-        "note": "清关政策变化"
+        "note": "跨境+物流+平台+运价"
+      },
+      {
+        "id": "wuliubaba",
+        "name": "物流巴巴",
+        "url": "https://www.5688.cn/news",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "海运/空运/快递/FBA"
       }
     ],
-    "exchange-rate": [
+    "global-news": [
       {
-        "id": "safe",
-        "name": "国家外汇管理局",
-        "url": "https://www.safe.gov.cn",
-        "enabled": false,
-        "llm_task": "exchange-rate",
-        "note": "人民币汇率中间价"
+        "id": "ustr_tariff_actions",
+        "name": "关税政策｜USTR Tariff Actions",
+        "url": "https://ustr.gov/issue-areas/enforcement/section-301-investigations/tariff-actions",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "美国贸易代表办公室官方关税行动，适合跟踪 Section 301、关税调整和贸易政策变化"
       },
       {
-        "id": "xe",
-        "name": "XE Currency",
-        "url": "https://www.xe.com/currencytables/",
-        "enabled": false,
-        "llm_task": "exchange-rate",
-        "note": "实时汇率数据"
+        "id": "ofac_sanctions",
+        "name": "制裁政策｜OFAC Sanctions List Service",
+        "url": "https://ofac.treasury.gov/sanctions-list-service",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "美国财政部 OFAC 制裁名单服务，适合跟踪 SDN、非 SDN、制裁对象更新"
+      },
+      {
+        "id": "bis_entity_list",
+        "name": "出口管制｜BIS Entity List",
+        "url": "https://www.bis.gov/entity-list",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "美国商务部实体清单，适合跟踪出口、再出口、转让许可限制"
+      },
+      {
+        "id": "trade_csl",
+        "name": "出口管制｜Trade.gov Consolidated Screening List",
+        "url": "https://www.trade.gov/consolidated-screening-list",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "美国多部门限制名单聚合入口，适合辅助筛查出口管制和受限方风险"
+      },
+      {
+        "id": "wto_news",
+        "name": "关税政策｜WTO News",
+        "url": "https://www.wto.org/english/news_e/news_e.htm",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "WTO 官方新闻，适合跟踪全球贸易措施、争端和政策变化"
+      },
+      {
+        "id": "ukmto_warnings",
+        "name": "地缘风险｜UKMTO Warnings",
+        "url": "https://www.ukmto.org/indian-ocean/recent-incidents",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "英国海事贸易行动办公室官方海上安全事件，适合跟踪红海、印度洋、海峡风险"
+      },
+      {
+        "id": "eia_today_energy",
+        "name": "石油能源｜EIA Today in Energy",
+        "url": "https://www.eia.gov/todayinenergy/",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "美国能源信息署官方能源快讯，适合跟踪油价、库存、供应和燃油成本"
+      },
+      {
+        "id": "iea_oil_market",
+        "name": "石油能源｜IEA Oil Market Report",
+        "url": "https://www.iea.org/reports/oil-market-report",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "国际能源署官方石油市场报告，适合跟踪全球石油供需和价格压力"
       }
     ],
-    "weather-alert": [
+    "policy-official": [
       {
-        "id": "weather_gov",
-        "name": "中央气象台",
-        "url": "http://www.nmc.cn",
-        "enabled": false,
+        "id": "mofcom_main",
+        "name": "官方政策｜商务部",
+        "url": "https://www.mofcom.gov.cn/",
+        "enabled": true,
         "llm_task": "global-logistics-risk",
-        "note": "极端天气预警"
+        "note": "商务部官方政策、外贸、投资、贸易摩擦等信息"
       },
       {
-        "id": "typhoon",
-        "name": "台风路径网",
-        "url": "https://typhoon.slt.zj.gov.cn",
-        "enabled": false,
+        "id": "cbp_csms",
+        "name": "美国清关｜CBP CSMS",
+        "url": "https://www.cbp.gov/trade/automated/cargo-systems-messaging-service",
+        "enabled": true,
         "llm_task": "global-logistics-risk",
-        "note": "台风实时路径"
+        "note": "美国 CBP 清关执行通知、ACE 系统通知、报关规则和进口要求变化"
+      },
+      {
+        "id": "cbp_trade_remedies",
+        "name": "美国贸易救济｜CBP Trade Remedies",
+        "url": "https://www.cbp.gov/trade/programs-administration/trade-remedies",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "CBP 301、232、反倾销、反补贴、贸易救济执行信息"
+      },
+      {
+        "id": "federal_register_trade",
+        "name": "美国法规｜Federal Register Trade Search",
+        "url": "https://www.federalregister.gov/documents/search?conditions%5Bagencies%5D%5B%5D=trade-representative-office-of-united-states&conditions%5Bagencies%5D%5B%5D=u-s-customs-and-border-protection&conditions%5Bagencies%5D%5B%5D=commerce-department",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "美国正式法规公告，重点观察 USTR、CBP、Commerce 等贸易相关机构"
+      },
+      {
+        "id": "gacc_main",
+        "name": "中国海关｜海关总署",
+        "url": "https://www.customs.gov.cn/",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "中国海关公告、监管规则、进出口统计、通关政策"
+      },
+      {
+        "id": "gacc_english",
+        "name": "中国海关｜英文站",
+        "url": "https://english.customs.gov.cn/",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "中国海关英文政策、进出口统计和官方新闻"
+      },
+      {
+        "id": "mofcom_wmsw",
+        "name": "官方政策｜商务部外贸服务",
+        "url": "https://wmsw.mofcom.gov.cn/wmsw/",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "外贸服务、企业办事、政策指引"
+      },
+      {
+        "id": "mofcom_fta",
+        "name": "官方政策｜自贸区服务网",
+        "url": "https://fta.mofcom.gov.cn/",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "自贸协定、关税优惠、FTA 政策信息"
+      },
+      {
+        "id": "mofcom_cacs",
+        "name": "官方政策｜贸易救济调查局",
+        "url": "https://cacs.mofcom.gov.cn/",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "反倾销、反补贴、保障措施、贸易救济调查公告"
+      },
+      {
+        "id": "mofcom_english",
+        "name": "官方政策｜商务部英文站",
+        "url": "https://english.mofcom.gov.cn/",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "英文贸易政策、新闻、发言人回应和双边经贸动态"
+      },
+      {
+        "id": "mof_tariff",
+        "name": "关税政策｜财政部",
+        "url": "https://www.mof.gov.cn/",
+        "enabled": true,
+        "llm_task": "global-logistics-risk",
+        "note": "中国关税调整、加征、暂停、降税、税则调整等财政部公告"
+      }
+    ],
+    "crossborder-platform": [
+      {
+        "id": "cifnews",
+        "name": "平台与卖家｜雨果跨境",
+        "url": "https://www.cifnews.com/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "跨境平台规则、卖家案例、合规、物流"
+      },
+      {
+        "id": "ebrun",
+        "name": "平台与卖家｜亿邦动力",
+        "url": "https://www.ebrun.com/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "电商产业、跨境电商、品牌出海"
+      },
+      {
+        "id": "mjzj",
+        "name": "平台与卖家｜卖家之家",
+        "url": "https://mjzj.com/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "亚马逊、平台规则、卖家运营资讯"
+      },
+      {
+        "id": "ikjzd",
+        "name": "平台与卖家｜跨境知道",
+        "url": "https://www.ikjzd.com/news/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "平台规则、运营、物流、政策资讯"
+      },
+      {
+        "id": "amz123",
+        "name": "平台与卖家｜AMZ123",
+        "url": "https://www.amz123.com/?p=597",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "亚马逊政策、工具、卖家服务"
+      },
+      {
+        "id": "kuajingyan",
+        "name": "平台与卖家｜跨境眼",
+        "url": "https://www.kuajingyan.com/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "平台规则、卖家运营、行业新闻"
+      }
+    ],
+    "shipping-port": [
+      {
+        "id": "ship_sh",
+        "name": "航运港口｜航运界",
+        "url": "https://www.ship.sh/articles",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "航运界文章列表，关注航运市场、船公司、港口、海运价格、事故和地缘对航线影响"
+      },
+      {
+        "id": "chinaports",
+        "name": "航运港口｜中国港口协会",
+        "url": "https://www.chinaports.org/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "港口政策、协会动态、港口行业新闻"
+      },
+      {
+        "id": "shippingchina_news",
+        "name": "航运港口｜国际海运网",
+        "url": "https://www.shippingchina.com/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "运价、货代、行业动态"
+      },
+      {
+        "id": "ourcargo",
+        "name": "航运港口｜咔咕网",
+        "url": "https://www.ourcargo.com/news",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "航线实操、目的国注意事项"
+      },
+      {
+        "id": "weiyun",
+        "name": "航运港口｜维运网",
+        "url": "https://www.weiyun001.com/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "船期、航线快讯、海运新闻"
+      },
+      {
+        "id": "freightwaves",
+        "name": "物流市场｜FreightWaves",
+        "url": "https://www.freightwaves.com/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "全球物流、港口、空运、供应链新闻，适合观察行业市场变化"
+      },
+      {
+        "id": "theloadstar",
+        "name": "物流市场｜The Loadstar",
+        "url": "https://theloadstar.com/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "国际货代、空运、海运、港口、船司、航线新闻"
+      },
+      {
+        "id": "aircargoweek",
+        "name": "空运市场｜Air Cargo Week",
+        "url": "https://aircargoweek.com/news/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "英文空运市场新闻，每次只取少量近期文章，展示时转为中文业务摘要"
+      },
+      {
+        "id": "stattimes_aircargo",
+        "name": "空运市场｜STAT Times",
+        "url": "https://www.stattimes.com/",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "英文航空货运与物流新闻，每次只取少量近期文章，展示时转为中文业务摘要"
+      },
+      {
+        "id": "shippingchina_medium_news",
+        "name": "航运港口｜国际海运网媒体平台",
+        "url": "https://www.shippingchina.com/medium/news/index.html",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "海运新闻详情页（Playwright渲染列表页，逐篇取全文）"
+      }
+    ],
+    "by56-wiki": [
+      {
+        "id": "by56",
+        "name": "百运百科",
+        "url": "https://www.by56.com/newsIndexquanbu1",
+        "enabled": true,
+        "llm_task": "cn-logistics-industry",
+        "note": "百运官方百科 · 空运/海运/快递/FBA/清关"
       }
     ]
   }

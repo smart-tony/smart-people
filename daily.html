@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>晨间星闻 · 跨境 AI 科技实时热点</title>
+<style>
+:root{
+  --brand:#0044cc;--brand-dark:#002b8a;--brand-light:#4d8fff;
+  --gold:#F5A623;--bg:#f0f6ff;
+  --text:#1a2a4a;--text-sub:#4a5e80;--muted:#8fa4c8;
+  --border:#d4e3f8;--card:#fff;
+  --tech:#0044cc;--industry:#059669;--wiki:#7c3aed;--policy:#d97706;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",sans-serif;background:var(--bg);color:var(--text);line-height:1.7;min-height:100vh}
+
+.hero-banner{width:100%;display:block;line-height:0;background:linear-gradient(135deg,#0a2e6e 0%,#0044cc 50%,#3b7ff5 100%);overflow:hidden}
+.hero-banner img{width:100%;display:block}
+
+.brief-head{background:#fff;border-bottom:1px solid var(--border)}
+.brief-inner{max-width:980px;margin:0 auto;padding:18px 20px 14px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.brief-title{font-size:22px;font-weight:800;color:var(--brand-dark);line-height:1.2}
+.brief-sub{font-size:13px;color:var(--text-sub);margin-top:3px}
+.brief-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.brief-link,.refresh-btn{border:1px solid var(--border);background:#fff;color:var(--text-sub);border-radius:8px;padding:8px 14px;font-size:13px;text-decoration:none;cursor:pointer;font-weight:600}
+.refresh-btn{background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 2px 8px rgba(0,68,204,.2)}
+.refresh-btn:disabled{opacity:.6;cursor:not-allowed}
+
+.cats-bar{background:#fff;border-bottom:1px solid var(--border);padding:14px 0}
+.cats-inner{max-width:980px;margin:0 auto;padding:0 20px;display:flex;gap:10px;overflow-x:auto;align-items:center}
+.cats-inner::-webkit-scrollbar{display:none}
+.cat-pill{padding:7px 18px;border-radius:20px;font-size:13px;font-weight:600;background:transparent;border:1px solid var(--border);color:var(--text-sub);cursor:pointer;transition:.2s;white-space:nowrap;flex-shrink:0}
+.cat-pill:hover{border-color:var(--brand);color:var(--brand)}
+.cat-pill.active{background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 2px 8px rgba(0,68,204,.2)}
+.cat-count{font-size:11px;opacity:.75;margin-left:5px}
+
+.content{max-width:980px;margin:0 auto;padding:24px 20px 80px}
+.radar-note{background:#fff;border:1px solid var(--border);border-radius:8px;padding:13px 16px;margin-bottom:18px;color:var(--text-sub);font-size:13px;display:flex;justify-content:space-between;gap:12px}
+.radar-note strong{color:var(--brand-dark)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.stat{background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px 16px}
+.stat-v{font-size:26px;line-height:1;font-weight:800;color:var(--brand-dark)}
+.stat-l{font-size:12px;color:var(--muted);margin-top:6px}
+
+.section{margin:22px 0 30px}
+.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:10px}
+.section-title{display:flex;align-items:center;gap:10px}
+.section-dot{width:10px;height:10px;border-radius:50%}
+.section-title h2{font-size:18px;font-weight:800;color:var(--text)}
+.section-title p{font-size:12px;color:var(--muted);margin-top:1px}
+.section-count{font-size:12px;color:var(--muted);white-space:nowrap}
+
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.item{background:var(--card);border-radius:8px;padding:17px 18px;border:1px solid var(--border);transition:.15s;min-height:178px;display:flex;flex-direction:column;cursor:pointer}
+.item:hover{border-color:var(--brand-light);box-shadow:0 2px 12px rgba(0,68,204,.06)}
+.item-meta{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.item-source{font-size:11px;color:var(--muted);font-weight:600}
+.section-tag{font-size:11px;padding:2px 8px;border-radius:12px;font-weight:700;border:1px solid transparent}
+.section-tag.tech{background:#eef3ff;color:var(--tech);border-color:#d5e2ff}
+.section-tag.industry{background:#ecfdf5;color:var(--industry);border-color:#bbf7d0}
+.section-tag.wiki{background:#f5f3ff;color:var(--wiki);border-color:#ddd6fe}
+.section-tag.policy{background:#fff7ed;color:var(--policy);border-color:#fed7aa}
+.item-score{font-size:10px;padding:3px 8px;border-radius:10px;font-weight:700;white-space:nowrap;margin-left:auto;background:#eef3ff;color:var(--brand);border:1px solid var(--border)}
+.item-title{font-size:15px;font-weight:700;color:var(--text);line-height:1.58;margin-bottom:7px}
+.item-title a{color:var(--text);text-decoration:none}
+.item-title a:hover{color:var(--brand)}
+.item-summary{font-size:13px;color:var(--text-sub);line-height:1.7;margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.item-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
+.item-tags span{font-size:11px;padding:2px 8px;border-radius:10px;background:#eef3ff;color:var(--brand);border:1px solid var(--border)}
+.item-link{font-size:11px;margin-top:8px}
+.item-link a{color:var(--muted);text-decoration:none}
+.item-link a:hover{color:var(--brand)}
+
+.loading{text-align:center;padding:60px 20px;color:var(--muted)}
+.spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--brand);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:60px 20px;color:var(--muted);font-size:14px}
+.error{background:#fff7f7;border:1px solid #ffd5d5;color:#9f3535;border-radius:8px;padding:14px 16px;font-size:13px}
+
+.panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:none;overflow:hidden}
+.panel-overlay.open{display:block}
+.panel{position:fixed;top:0;right:0;bottom:0;width:480px;max-width:92vw;background:#fff;overflow-y:auto;box-shadow:-8px 0 30px rgba(0,0,0,.15);transform:translateX(100%);transition:transform .25s ease}
+.panel-overlay.open .panel{transform:translateX(0)}
+.panel-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:#fff;z-index:1}
+.panel-close{background:none;border:none;font-size:14px;color:var(--brand);cursor:pointer;font-weight:700}
+.panel-src{font-size:12px;color:var(--muted)}
+.panel-body{padding:20px}
+.panel-title{font-size:18px;font-weight:800;margin-bottom:12px;line-height:1.5}
+.panel-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.panel-desc{font-size:14px;color:var(--text-sub);line-height:1.9;margin-bottom:16px}
+.panel-block{margin-bottom:16px}
+.panel-block-title{font-size:12px;font-weight:800;color:var(--brand-dark);margin-bottom:6px}
+.panel-block-body{font-size:14px;color:var(--text-sub);line-height:1.9;white-space:pre-wrap}
+.panel-block-body.strong{color:var(--text)}
+.panel-link{font-size:13px;color:var(--brand);text-decoration:none;display:inline-block;margin-top:8px}
+.panel-link:hover{text-decoration:underline}
+.panel-tag{font-size:11px;padding:2px 8px;border-radius:10px;background:#eef3ff;color:var(--brand);border:1px solid var(--border)}
+
+@media(max-width:760px){
+  body{background:#f4f8ff}
+  .hero-banner{aspect-ratio:16/7}
+  .hero-banner img{height:100%;object-fit:cover;object-position:center}
+  .brief-inner{align-items:flex-start;flex-direction:column;padding:14px 14px 12px;gap:10px}
+  .brief-title{font-size:20px}
+  .brief-sub{font-size:12px;line-height:1.5}
+  .brief-actions{width:100%;justify-content:flex-start}
+  .brief-link,.refresh-btn{min-height:40px;padding:9px 13px}
+  .refresh-btn{flex:1;text-align:center}
+  .content{padding:16px 12px 58px}
+  .cats-inner{padding:0 12px}
+  .cats-bar{padding:10px 0}
+  .cat-pill{padding:8px 14px}
+  .grid{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .stat{padding:11px 10px}
+  .stat-v{font-size:20px}
+  .stat-l{font-size:11px;line-height:1.35}
+  .radar-note{display:block;padding:12px;font-size:12px;line-height:1.6}
+  .radar-note>div:first-child{display:none}
+  .section{margin:18px 0 24px}
+  .section-head{align-items:flex-start;flex-direction:column}
+  .section-title h2{font-size:17px}
+  .section-title p{font-size:11px;line-height:1.45}
+  .item{padding:15px;min-height:auto}
+  .item-title{font-size:15px;line-height:1.55}
+  .item-summary{font-size:13px;-webkit-line-clamp:4}
+  .item-meta{align-items:flex-start}
+  .item-source{max-width:100%;line-height:1.4}
+  .item-score{margin-left:0}
+  .panel{width:100%;max-width:100%}
+  .panel-head{padding:14px 16px}
+  .panel-body{padding:16px}
+  .panel-title{font-size:17px}
+  .panel-desc{font-size:14px;line-height:1.85}
+}
+@media(max-width:380px){
+  .stats{grid-template-columns:1fr}
+  .brief-actions{flex-direction:column;align-items:stretch}
+  .brief-link,.refresh-btn{width:100%}
+}
+</style>
+</head>
+<body>
+
+<div class="hero-banner">
+  <img src="/static/morning-news-banner.png" alt="晨间星闻跨境 AI 科技实时热点">
+</div>
+
+<div class="brief-head">
+  <div class="brief-inner">
+    <div>
+      <div class="brief-title">晨间星闻</div>
+      <div class="brief-sub">运小星为你把 AI、物流、政策三路情报先分好筐。</div>
+    </div>
+    <div class="brief-actions">
+      <a class="brief-link" href="/briefing">看板</a>
+    </div>
+  </div>
+</div>
+
+<div class="cats-bar">
+  <div class="cats-inner" id="tabs"></div>
+</div>
+
+<div class="content">
+  <div class="radar-note">
+    <div><strong>分拣规则：</strong>AI 板块沿用原逻辑；物流板块看运价、时效、航线、港口、平台和清关实操；百运百科单独沉淀内部知识；政策板块只放关税、海关规则、制裁出口管制和地缘风险。</div>
+    <div id="updatedAt">星闻雷达准备中...</div>
+  </div>
+  <div id="content">
+    <div class="loading"><div class="spinner"></div>正在加载晨间星闻…</div>
+  </div>
+</div>
+
+<script>
+const SECTIONS=[
+  {id:'all',label:'全部'},
+  {id:'tech',label:'科技动态'},
+  {id:'industry',label:'行业动态'},
+  {id:'wiki',label:'百运百科'},
+  {id:'policy',label:'政策动态'}
+];
+const STYLE={
+  tech:{label:'科技动态',cls:'tech',color:'var(--tech)',note:'AI 模型、产品、工具、论文和开发者生态'},
+  industry:{label:'行业动态',cls:'industry',color:'var(--industry)',note:'跨境物流、运价、航线、港口、平台规则、清关实操'},
+  wiki:{label:'百运百科',cls:'wiki',color:'var(--wiki)',note:'百运官方知识、渠道说明、清关/FBA/空海运实操沉淀'},
+  policy:{label:'政策动态',cls:'policy',color:'var(--policy)',note:'关税政策、海关规则、制裁出口管制、地缘风险'}
+};
+const ORDER=['tech','industry','wiki','policy'];
+const AI_LABELS={'ai-models':'模型发布','ai-products':'产品更新','industry':'AI 行业','paper':'论文研究','tip':'技巧观点'};
+const POLICY_TASKS=new Set(['policy-official']);
+const POLICY_HINT_TASKS=new Set(['global-news']);
+const INDUSTRY_TASKS=new Set(['logistics-daily','crossborder-platform','shipping-port','by56-wiki']);
+const POLICY_RE=/关税|税率|Section 301|Section 232|反倾销|反补贴|贸易救济|贸易摩擦|tariff|duties|anti-dumping|countervailing|customs duty|de minimis|HS编码|HS code|原产地|海关公告|清关政策|CBP|USTR|Federal Register|OFAC|BIS|SDN|Entity List|出口管制|制裁|禁运|限制名单|地缘|红海|海峡|封锁|战争|冲突|空域关闭|港口封锁|罢工|WTO|FTA|商务部|财政部|税则/i;
+const INDUSTRY_RE=/物流|货代|运价|运费|空派|空运|海运|快递|FBA|海外仓|清关|港口|航线|船公司|舱位|派送|卖家|平台|跨境电商|亚马逊|Temu|SHEIN|附加费|延误|container rate|ocean freight|air cargo|port congestion|blank sailing|surcharge|capacity/i;
+
+let allItems=[];
+let active='all';
+
+function todayText(){
+  const d=new Date();
+  const w=['日','一','二','三','四','五','六'][d.getDay()];
+  return `${d.getMonth()+1}月${d.getDate()}日 周${w}`;
+}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function host(url){try{return new URL(url).hostname.replace(/^www\./,'')}catch(e){return ''}}
+function trimText(s,max=210){
+  const text=String(s||'').replace(/\s+/g,' ').trim();
+  if(text.length<=max)return text;
+  let cut=text.slice(0,max).lastIndexOf('。');
+  if(cut<80)cut=text.slice(0,max).lastIndexOf('，');
+  if(cut<80)cut=max-1;
+  return text.slice(0,cut+1).replace(/[，。,\s]+$/,'')+'…';
+}
+function score(v){const n=Number(v||0);return n>0?n.toFixed(1)+'分':''}
+function classifyOps(item){
+  const task=item.task||item._task||item.task_type||'';
+  if(task==='by56-wiki')return 'wiki';
+  const tags=(item.tags||item.ai_tags||[]).join(' ');
+  const hay=[item.title,item.summary,item.ai_summary,item.analysis,item.ai_analysis,item.source_name,item.label,item._task_label,tags].join(' ');
+  if(POLICY_TASKS.has(task))return 'policy';
+  if(POLICY_RE.test(hay)){
+    if(POLICY_HINT_TASKS.has(task) || /关税|税率|Section 301|反倾销|反补贴|贸易救济|贸易摩擦|CBP|USTR|OFAC|BIS|Entity List|出口管制|制裁|地缘|红海|战争|冲突|海峡|封锁|WTO|商务部|财政部|税则/i.test(hay)){
+      return 'policy';
+    }
+  }
+  if(INDUSTRY_TASKS.has(task) || INDUSTRY_RE.test(hay))return 'industry';
+  return 'industry';
+}
+function normalizeAI(item,idx){
+  const cat=item.category||item.task||'';
+  return {
+    id:'ai-'+idx,
+    section:'tech',
+    title:item.title||'无标题',
+    source:item.source||item.sourceName||item.source_name||'AI HOT',
+    url:item.url||item.sourceUrl||item.source_url||'#',
+    summary:item.summary||item.ai_summary||'',
+    analysis:item.analysis||item.ai_analysis||'',
+    score:item.score||item.ai_score||0,
+    tags:[AI_LABELS[cat]||cat,'AI'].filter(Boolean),
+    rawTask:cat
+  };
+}
+function normalizeOps(item,idx){
+  const task=item.task||item._task||item.task_type||'';
+  const section=classifyOps(item);
+  return {
+    id:'ops-'+idx,
+    section,
+    title:item.title||'无标题',
+    source:item.source_name||item.source_id||item.source||'跨境情报源',
+    url:item.source_url||item.url||'#',
+    summary:item.summary||item.ai_summary||item.analysis||item.ai_analysis||'',
+    analysis:item.analysis||item.ai_analysis||'',
+    score:item.score||item.ai_score||0,
+    tags:[item.label||item._task_label||task].concat(item.tags||item.ai_tags||[]).filter(Boolean),
+    rawTask:task
+  };
+}
+function counts(){
+  return allItems.reduce((m,i)=>{m[i.section]=(m[i.section]||0)+1;return m},{tech:0,industry:0,policy:0});
+}
+function renderTabs(){
+  const c=counts();
+  document.getElementById('tabs').innerHTML=SECTIONS.map(s=>{
+    const n=s.id==='all'?allItems.length:(c[s.id]||0);
+    return `<button class="cat-pill ${active===s.id?'active':''}" onclick="setActive('${s.id}')">${s.label}<span class="cat-count">${n}</span></button>`;
+  }).join('');
+}
+function renderStats(items){
+  const c=counts();
+  return `<div class="stats">
+    <div class="stat"><div class="stat-v">${items.length}</div><div class="stat-l">${active==='all'?'当前展示':'本板块'}条目</div></div>
+    <div class="stat"><div class="stat-v">${new Set(allItems.map(i=>i.source)).size}</div><div class="stat-l">信息源</div></div>
+    <div class="stat"><div class="stat-v">${c.policy||0}</div><div class="stat-l">政策风险</div></div>
+  </div>`;
+}
+function card(item){
+  const st=STYLE[item.section];
+  const tags=(item.tags||[]).filter(t=>t&&String(t).length<16).slice(0,4);
+  const h=host(item.url);
+  return `<div class="item" onclick="openItem(this)"
+      data-title="${esc(item.title)}" data-source="${esc(item.source)}" data-section="${esc(st.label)}"
+      data-summary="${esc(item.summary)}" data-analysis="${esc(item.analysis)}" data-url="${esc(item.url)}"
+      data-tags="${esc(tags.join(','))}">
+    <div class="item-meta">
+      <span class="item-source">${esc(item.source)}</span>
+      <span class="section-tag ${st.cls}">${st.label}</span>
+      ${score(item.score)?`<span class="item-score">${score(item.score)}</span>`:''}
+    </div>
+    <div class="item-title">${esc(item.title)}</div>
+    ${item.summary?`<div class="item-summary">${esc(trimText(item.summary))}</div>`:''}
+    ${tags.length?`<div class="item-tags">${tags.map(t=>`<span>${esc(t)}</span>`).join('')}</div>`:''}
+    ${h?`<div class="item-link"><a href="${esc(item.url)}" target="_blank" onclick="event.stopPropagation()">${esc(h)}</a></div>`:''}
+  </div>`;
+}
+function sectionBlock(id,items){
+  const st=STYLE[id];
+  return `<section class="section">
+    <div class="section-head">
+      <div class="section-title"><span class="section-dot" style="background:${st.color}"></span><div><h2>${st.label}</h2><p>${st.note}</p></div></div>
+      <div class="section-count">${items.length} 条</div>
+    </div>
+    <div class="grid">${items.map(card).join('')}</div>
+  </section>`;
+}
+function render(){
+  renderTabs();
+  const shown=active==='all'?allItems:allItems.filter(i=>i.section===active);
+  if(!shown.length){document.getElementById('content').innerHTML='<div class="empty">这一栏暂时没有新星闻。</div>';return}
+  let html=renderStats(shown);
+  if(active==='all'){
+    ORDER.forEach(id=>{const items=allItems.filter(i=>i.section===id);if(items.length)html+=sectionBlock(id,items)});
+  }else html+=sectionBlock(active,shown);
+  document.getElementById('content').innerHTML=html;
+}
+function setActive(id){active=id;render()}
+async function fetchJson(url){
+  const resp=await fetch(url);
+  if(!resp.ok)throw new Error(url+' HTTP '+resp.status);
+  return resp.json();
+}
+async function loadMorningNews(refresh){
+  document.getElementById('content').innerHTML='<div class="loading"><div class="spinner"></div>正在加载晨间星闻…</div>';
+  try{
+    const qs=refresh?'?refresh=true':'';
+    const pair=await Promise.all([fetchJson('/api/briefing'+qs),fetchJson('/api/briefing/logistics'+qs)]);
+    const aiItems=(pair[0].items||[]).map(normalizeAI);
+    const opsItems=(pair[1].items||[]).map(normalizeOps);
+    allItems=aiItems.concat(opsItems);
+    const updated=pair[1].updated_at||pair[0].updated_at||new Date().toISOString();
+    let time='刚刚';
+    try{time=new Date(updated).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}catch(e){}
+    document.getElementById('updatedAt').textContent=`${todayText()} · ${time} 更新`;
+    render();
+  }catch(e){
+    document.getElementById('content').innerHTML='<div class="error">加载失败：'+esc(e.message)+'</div>';
+  }
+}
+function openItem(el){
+  document.getElementById('po').classList.add('open');
+  document.body.style.overflow='hidden';
+  document.getElementById('pt').textContent=el.dataset.title||'';
+  document.getElementById('ps').textContent=(el.dataset.source||'')+' · '+(el.dataset.section||'');
+  const analysis=(el.dataset.analysis||'').trim();
+  const body=(el.dataset.summary||'').trim();
+  const isWiki=(el.dataset.section||'')==='百运百科';
+  const blocks=[];
+  if(analysis){
+    blocks.push(`<div class="panel-block"><div class="panel-block-title">${isWiki?'原文重点总结':'业务解读'}</div><div class="panel-block-body strong">${esc(analysis)}</div></div>`);
+  }
+  if(body){
+    blocks.push(`<div class="panel-block"><div class="panel-block-title">${isWiki?'原文摘要':'内容摘要'}</div><div class="panel-block-body">${esc(body)}</div></div>`);
+  }
+  document.getElementById('pd').innerHTML=blocks.join('')||'<div class="panel-block-body">暂无可展示摘要。</div>';
+  const url=el.dataset.url||'#';
+  document.getElementById('pl').href=url;
+  try{document.getElementById('pl').textContent='查看原文 · '+new URL(url).hostname.replace(/^www\./,'')}catch(e){document.getElementById('pl').textContent='查看原文'}
+  const tags=(el.dataset.tags||'').split(',').filter(Boolean);
+  document.getElementById('pm').innerHTML=tags.map(t=>'<span class="panel-tag">'+esc(t)+'</span>').join('');
+}
+function closePanel(){
+  document.getElementById('po').classList.remove('open');
+  document.body.style.overflow='';
+}
+loadMorningNews(false);
+</script>
+
+<div class="panel-overlay" id="po" onclick="closePanel()">
+  <div class="panel" onclick="event.stopPropagation()">
+    <div class="panel-head">
+      <button class="panel-close" onclick="closePanel()">&larr; 返回</button>
+      <span class="panel-src" id="ps"></span>
+    </div>
+    <div class="panel-body">
+      <div class="panel-title" id="pt"></div>
+      <div class="panel-meta" id="pm"></div>
+      <div class="panel-desc" id="pd"></div>
+      <a class="panel-link" id="pl" href="#" target="_blank">查看原文</a>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
