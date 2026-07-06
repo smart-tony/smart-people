@@ -17,12 +17,12 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from models import RawArticle, CandidateItem, FetchResult, ReportBriefing
-from settings import load_llm_config, get_data_dir
+from settings import load_llm_config, get_data_dir, require_auth
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIG_DIR = ROOT / "config"
@@ -30,7 +30,7 @@ DATA_DIR = get_data_dir()
 DRAFTS_DIR = DATA_DIR / "drafts"
 CACHE_DIR = DATA_DIR / "cache"
 
-router = APIRouter(prefix="/api/scrape", tags=["采集管道"])
+router = APIRouter(prefix="/api/scrape", tags=["采集管道"], dependencies=[Depends(require_auth)])
 
 PLAYWRIGHT_SOURCE_DOMAINS = {
     "openai.com",

@@ -11,11 +11,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.concurrency import run_in_threadpool
 
-from db import insert_items, get_stats, publish_all_today
-from settings import get_data_dir
+from db import cleanup_old_items, insert_items, get_stats, publish_all_today
+from settings import get_data_dir, require_auth
 
 from routes.scrape import (
     pick_sources,
@@ -28,7 +28,7 @@ from routes.scrape import (
     resolve_task_type,
 )
 
-router = APIRouter(prefix="/api/admin", tags=["晨间星闻管理后台"])
+router = APIRouter(prefix="/api/admin", tags=["晨间星闻管理后台"], dependencies=[Depends(require_auth)])
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -166,3 +166,10 @@ def clear_drafts(days: int = 7):
             f.unlink()
             deleted += 1
     return {"ok": True, "deleted": deleted}
+
+
+@router.post("/cleanup-old-items")
+def cleanup_items(days: int = 90):
+    """清理 N 天前的 SQLite 历史记录。"""
+    deleted = cleanup_old_items(days)
+    return {"ok": True, "deleted": deleted, "days": max(7, int(days or 90))}

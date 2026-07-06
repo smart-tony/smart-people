@@ -15,10 +15,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.concurrency import run_in_threadpool
 
-from settings import get_data_dir
+from settings import get_data_dir, require_auth
 
 router = APIRouter(prefix="/api/briefing", tags=["晨间星闻"])
 
@@ -31,6 +31,17 @@ _CACHE_TTL = 300  # 5 分钟内存缓存，超时自动拉取最新
 _CACHE_FILE_KEEP_DAYS = 7  # 磁盘日期快照保留 7 天，更早的自动清理
 _logistics_refresh_task: asyncio.Task | None = None
 _logistics_refresh_started_at: float = 0
+_last_logistics_refresh: dict = {
+    "ok": None,
+    "started_at": "",
+    "finished_at": "",
+    "duration_sec": None,
+    "reason": "",
+    "error": "",
+    "items": 0,
+    "counts_by_task": {},
+    "fallback_added": 0,
+}
 _policy_translation_cache_lock = threading.Lock()
 try:
     _LOGISTICS_REFRESH_TOTAL_TIMEOUT = max(60, int(os.getenv("LOGISTICS_REFRESH_TOTAL_TIMEOUT", "600")))
@@ -1133,9 +1144,19 @@ def _schedule_logistics_refresh(reason: str = "") -> None:
 
 
 async def _refresh_logistics_background(reason: str = "") -> None:
-    global _logistics_refresh_started_at
+    global _logistics_refresh_started_at, _last_logistics_refresh
     import logging
     log = logging.getLogger("logistics.refresh")
+    started = time.time()
+    _last_logistics_refresh = {
+        **_last_logistics_refresh,
+        "ok": None,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "finished_at": "",
+        "duration_sec": None,
+        "reason": reason,
+        "error": "",
+    }
     try:
         async with _lock_logistics:
             try:
@@ -1149,9 +1170,18 @@ async def _refresh_logistics_background(reason: str = "") -> None:
                     reason,
                     _LOGISTICS_REFRESH_TOTAL_TIMEOUT,
                 )
+                _last_logistics_refresh.update({
+                    "ok": False,
+                    "error": f"刷新总超时 {_LOGISTICS_REFRESH_TOTAL_TIMEOUT}s",
+                })
                 return
             if not scraped.get("items"):
                 log.warning("后台刷新完成但无有效条目 reason=%s errors=%s", reason, scraped.get("errors", []))
+                _last_logistics_refresh.update({
+                    "ok": False,
+                    "error": "无有效条目；" + "；".join(scraped.get("errors", [])[:3]),
+                    "items": 0,
+                })
                 return
             write_error = await _persist_logistics_payload(scraped)
             if write_error:
@@ -1176,14 +1206,31 @@ async def _refresh_logistics_background(reason: str = "") -> None:
                     error=write_error,
                 )
             _remember_logistics_response(response)
+            counts_by_task: dict[str, int] = {}
+            for item in response.get("items", []):
+                task = item.get("task") or item.get("task_type") or "other"
+                counts_by_task[task] = counts_by_task.get(task, 0) + 1
+            _last_logistics_refresh.update({
+                "ok": True,
+                "error": write_error or "",
+                "items": len(response.get("items", [])),
+                "counts_by_task": counts_by_task,
+                "fallback_added": (response.get("fallback_fill") or {}).get("added", 0),
+            })
             log.info("后台刷新成功 reason=%s items=%d", reason, len(scraped.get("items", [])))
     except asyncio.CancelledError:
         log.warning("后台刷新任务被取消 reason=%s", reason)
+        _last_logistics_refresh.update({"ok": False, "error": "刷新任务被取消"})
         raise
     except Exception as exc:
         log.error("后台刷新异常 reason=%s error=%s", reason, exc, exc_info=True)
+        _last_logistics_refresh.update({"ok": False, "error": str(exc)})
         # 后台刷新失败不影响用户；定时任务或下次请求会重试
     finally:
+        _last_logistics_refresh.update({
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "duration_sec": round(time.time() - started, 2),
+        })
         _logistics_refresh_started_at = 0
 
 
@@ -1435,7 +1482,7 @@ def _format_logistics_response(db_items: list[dict], date: str, from_db: bool = 
 
 
 @router.post("/refresh")
-async def refresh_briefing():
+async def refresh_briefing(_user: str | None = Depends(require_auth)):
     """强制刷新：重新抓取并写入数据库"""
     global _cache_ai, _cache_time_ai
     _cache_ai = None

@@ -7,7 +7,7 @@ import json
 import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -231,6 +231,36 @@ def count_by_task(date: str = "") -> dict[str, int]:
         """).fetchall()
     conn.close()
     return {r["task_type"] or "other": r["cnt"] for r in rows}
+
+
+def count_by_task_between(start: str, end: str) -> dict[str, int]:
+    """按 task_type 统计指定 UTC 时间范围内的已发布条目。"""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT task_type, COUNT(*) as cnt FROM items
+        WHERE status='published' AND scraped_at >= ? AND scraped_at < ?
+        GROUP BY task_type
+    """, (start, end)).fetchall()
+    conn.close()
+    return {r["task_type"] or "other": r["cnt"] for r in rows}
+
+
+def cleanup_old_items(days: int = 90) -> int:
+    """删除 N 天前的数据，避免 SQLite 长期无限增长。"""
+    days = max(7, int(days or 90))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    try:
+        cursor = conn.execute("DELETE FROM items WHERE scraped_at < ?", (cutoff,))
+        deleted = cursor.rowcount if cursor.rowcount is not None else 0
+        conn.commit()
+        try:
+            conn.execute("VACUUM")
+        except sqlite3.OperationalError:
+            pass
+        return deleted
+    finally:
+        conn.close()
 
 
 def get_candidates(limit: int = 50) -> list[dict]:

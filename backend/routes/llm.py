@@ -8,14 +8,14 @@ import json
 import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from openai import OpenAI
 
-from settings import load_config, load_llm_config
+from settings import load_config, load_llm_config, require_auth
 
-router = APIRouter(prefix="/api/llm", tags=["LLM"])
+router = APIRouter(prefix="/api/llm", tags=["LLM"], dependencies=[Depends(require_auth)])
 VALID_TASK_TYPES = (
     "ai-weekly",
     "global-logistics-risk",

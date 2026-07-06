@@ -4,13 +4,18 @@
 访问: http://localhost:8000/daily
 """
 import sys
+import ipaddress
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
+from urllib.parse import urlparse
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from fastapi import FastAPI
+from fastapi import Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,7 +24,7 @@ from routes.llm import router as llm_router
 from routes.scrape import router as scrape_router
 from routes.briefing import router as briefing_router
 from routes.admin import router as admin_router
-from settings import get_cors_origins, load_llm_config
+from settings import get_cors_origins, load_llm_config, require_auth
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
@@ -83,7 +88,13 @@ async def _auto_refresh_loop():
 @app.get("/api/health")
 async def health():
     import time
-    from routes.briefing import _cache_logistics, _cache_time_logistics, _logistics_refresh_task
+    from routes.briefing import (
+        _cache_logistics,
+        _cache_time_logistics,
+        _last_logistics_refresh,
+        _logistics_refresh_started_at,
+        _logistics_refresh_task,
+    )
 
     llm = load_llm_config()
     api_key = llm.get("api_key", "")
@@ -93,12 +104,17 @@ async def health():
     logistics_healthy = logistics_items > 0 and (logistics_age is not None and logistics_age < 14400)
 
     db_today_count = 0
+    counts = {}
     try:
-        from db import count_by_task
-        from datetime import datetime, timezone
+        from db import count_by_task_between
         from fastapi.concurrency import run_in_threadpool
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        counts = await run_in_threadpool(count_by_task, today)
+        shanghai = ZoneInfo("Asia/Shanghai")
+        today_local = datetime.now(shanghai).date()
+        start_local = datetime.combine(today_local, datetime.min.time(), tzinfo=shanghai)
+        end_local = start_local + timedelta(days=1)
+        start_utc = start_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        end_utc = end_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        counts = await run_in_threadpool(count_by_task_between, start_utc, end_utc)
         db_today_count = sum(counts.values()) if counts else 0
     except Exception:
         pass
@@ -111,7 +127,10 @@ async def health():
             "cache_items": logistics_items,
             "cache_age_sec": logistics_age,
             "db_today_items": db_today_count,
+            "counts_by_task": counts,
             "refresh_running": bool(_logistics_refresh_task and not _logistics_refresh_task.done()),
+            "refresh_age_sec": int(time.time() - _logistics_refresh_started_at) if _logistics_refresh_started_at else None,
+            "last_refresh": _last_logistics_refresh,
         },
     }
 
@@ -122,6 +141,21 @@ async def img_proxy(url: str = ""):
     if not url or not url.startswith("http"):
         from fastapi.responses import Response
         return Response(status_code=400)
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").strip().lower()
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        from fastapi.responses import Response
+        return Response(status_code=400)
+    if hostname in {"localhost", "0.0.0.0"} or hostname.endswith(".local"):
+        from fastapi.responses import Response
+        return Response(status_code=403)
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            from fastapi.responses import Response
+            return Response(status_code=403)
+    except ValueError:
+        pass
     import httpx
     try:
         async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
@@ -183,7 +217,7 @@ def serve_all():
     return FileResponse(ROOT / "all.html")
 
 @app.get("/admin")
-def serve_admin():
+def serve_admin(_user: str | None = Depends(require_auth)):
     return FileResponse(ROOT / "admin.html")
 
 
