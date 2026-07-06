@@ -42,7 +42,7 @@ def scrape_one(task_type, label):
             resp = requests.post(
                 f"{BASE_URL}/api/scrape/fetch",
                 json={
-                    "task_type": task_type, "limit": 8,
+                    "task_type": task_type, "limit": 10,
                     "force_refresh": True, "recency_days": 5,
                     "analyze_with_llm": False,
                 },

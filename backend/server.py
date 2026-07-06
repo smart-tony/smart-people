@@ -1,7 +1,7 @@
 """
 晨间星闻 后端服务
 启动: cd backend && uvicorn server:app --host 0.0.0.0 --port 8000
-访问: http://localhost:8000/briefing
+访问: http://localhost:8000/daily
 """
 import sys
 from pathlib import Path
@@ -12,7 +12,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from routes.llm import router as llm_router
@@ -176,7 +176,7 @@ def serve_daily():
 
 @app.get("/briefing")
 def serve_briefing():
-    return FileResponse(ROOT / "briefing.html")
+    return RedirectResponse(url="/daily", status_code=302)
 
 @app.get("/all")
 def serve_all():
@@ -191,5 +191,5 @@ if __name__ == "__main__":
     import uvicorn
     from settings import get_server_host, get_server_port
     print(f"\n  晨间星闻")
-    print(f"  🌐 http://localhost:8000/briefing\n")
+    print(f"  🌐 http://localhost:8000/daily\n")
     uvicorn.run(app, host=get_server_host(), port=get_server_port(), log_level="info")

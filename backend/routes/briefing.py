@@ -30,7 +30,16 @@ _cache_time_logistics: float = 0
 _CACHE_TTL = 300  # 5 分钟内存缓存，超时自动拉取最新
 _CACHE_FILE_KEEP_DAYS = 7  # 磁盘日期快照保留 7 天，更早的自动清理
 _logistics_refresh_task: asyncio.Task | None = None
+_logistics_refresh_started_at: float = 0
 _policy_translation_cache_lock = threading.Lock()
+try:
+    _LOGISTICS_REFRESH_TOTAL_TIMEOUT = max(60, int(os.getenv("LOGISTICS_REFRESH_TOTAL_TIMEOUT", "600")))
+except ValueError:
+    _LOGISTICS_REFRESH_TOTAL_TIMEOUT = 600
+try:
+    _LOGISTICS_REFRESH_STALE_SECONDS = max(120, int(os.getenv("LOGISTICS_REFRESH_STALE_SECONDS", "900")))
+except ValueError:
+    _LOGISTICS_REFRESH_STALE_SECONDS = 900
 
 # 并发锁：防止多人同时访问时重复触发抓取（thundering herd）
 _lock_ai = asyncio.Lock()
@@ -63,6 +72,10 @@ INDUSTRY_DISPLAY_TRANSLATION_SOURCES = {
 }
 POLICY_DISPLAY_TRANSLATION_CACHE = "policy_display_translation_cache.json"
 POLICY_DISPLAY_TRANSLATION_LIMIT = int(os.getenv("POLICY_DISPLAY_TRANSLATION_LIMIT", "15"))
+try:
+    MIN_LOGISTICS_ITEMS_PER_TASK = max(0, int(os.getenv("MIN_LOGISTICS_ITEMS_PER_TASK", "10")))
+except ValueError:
+    MIN_LOGISTICS_ITEMS_PER_TASK = 10
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _LATIN_RE = re.compile(r"[A-Za-z]")
 _RECRUITMENT_RE = re.compile(
@@ -1109,18 +1122,34 @@ def _load_logistics_fallback(query_date: str) -> tuple[dict | None, str]:
 
 def _schedule_logistics_refresh(reason: str = "") -> None:
     """用户请求只负责秒回；刷新和入库交给后台单任务。"""
-    global _logistics_refresh_task
+    global _logistics_refresh_task, _logistics_refresh_started_at
     if _logistics_refresh_task and not _logistics_refresh_task.done():
-        return
+        age = time.time() - _logistics_refresh_started_at if _logistics_refresh_started_at else 0
+        if age < _LOGISTICS_REFRESH_STALE_SECONDS:
+            return
+        _logistics_refresh_task.cancel()
+    _logistics_refresh_started_at = time.time()
     _logistics_refresh_task = asyncio.create_task(_refresh_logistics_background(reason))
 
 
 async def _refresh_logistics_background(reason: str = "") -> None:
+    global _logistics_refresh_started_at
     import logging
     log = logging.getLogger("logistics.refresh")
-    async with _lock_logistics:
-        try:
-            scraped = await _scrape_logistics()
+    try:
+        async with _lock_logistics:
+            try:
+                scraped = await asyncio.wait_for(
+                    _scrape_logistics(),
+                    timeout=_LOGISTICS_REFRESH_TOTAL_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                log.warning(
+                    "后台刷新总超时 reason=%s timeout=%ss",
+                    reason,
+                    _LOGISTICS_REFRESH_TOTAL_TIMEOUT,
+                )
+                return
             if not scraped.get("items"):
                 log.warning("后台刷新完成但无有效条目 reason=%s errors=%s", reason, scraped.get("errors", []))
                 return
@@ -1133,8 +1162,12 @@ async def _refresh_logistics_background(reason: str = "") -> None:
                 db_items = await run_in_threadpool(get_published, date=today, limit=200)
             except Exception:
                 db_items = []
+            db_items, fill_meta = await _supplement_db_items_by_task(db_items, today)
             if db_items:
                 response = _format_logistics_response(db_items, today, from_db=True, error=write_error)
+                if fill_meta.get("added"):
+                    response["fallback_fill"] = fill_meta
+                    response["stale_mixed"] = True
             else:
                 response = _format_logistics_cache_response(
                     scraped,
@@ -1144,9 +1177,79 @@ async def _refresh_logistics_background(reason: str = "") -> None:
                 )
             _remember_logistics_response(response)
             log.info("后台刷新成功 reason=%s items=%d", reason, len(scraped.get("items", [])))
-        except Exception as exc:
-            log.error("后台刷新异常 reason=%s error=%s", reason, exc, exc_info=True)
-            # 后台刷新失败不影响用户；定时任务或下次请求会重试
+    except asyncio.CancelledError:
+        log.warning("后台刷新任务被取消 reason=%s", reason)
+        raise
+    except Exception as exc:
+        log.error("后台刷新异常 reason=%s error=%s", reason, exc, exc_info=True)
+        # 后台刷新失败不影响用户；定时任务或下次请求会重试
+    finally:
+        _logistics_refresh_started_at = 0
+
+
+async def _supplement_db_items_by_task(
+    db_items: list[dict],
+    query_date: str,
+    min_per_task: int = MIN_LOGISTICS_ITEMS_PER_TASK,
+) -> tuple[list[dict], dict]:
+    """按任务模块从历史已发布库补足展示量。
+
+    当当天某个模块抓不到或不足时，前台仍优先展示当天数据，再用历史 published
+    兜底补齐，避免用户打开晨间星闻时某个板块直接空掉。
+    """
+    if min_per_task <= 0:
+        return db_items, {"enabled": False, "added": 0, "min_per_task": min_per_task}
+
+    from db import get_published
+
+    supplemented = list(db_items or [])
+    seen_urls = {
+        str(item.get("source_url") or item.get("url") or "")
+        for item in supplemented
+        if item.get("source_url") or item.get("url")
+    }
+    added_by_task: dict[str, int] = {}
+
+    def valid_for_task(item: dict, task_type: str) -> bool:
+        if (item.get("task_type") or item.get("task")) != task_type:
+            return False
+        if task_type in POLICY_DISPLAY_TASKS and _is_low_value_policy_item(item):
+            return False
+        return True
+
+    for task_type, _label in LOGISTICS_TASKS:
+        current_count = sum(1 for item in supplemented if valid_for_task(item, task_type))
+        if current_count >= min_per_task:
+            continue
+
+        need = min_per_task - current_count
+        try:
+            historical = await run_in_threadpool(get_published, task_type=task_type, limit=max(100, min_per_task * 5))
+        except Exception:
+            historical = []
+
+        for item in historical:
+            url = str(item.get("source_url") or item.get("url") or "")
+            if not url or url in seen_urls:
+                continue
+            item = dict(item)
+            if not valid_for_task(item, task_type):
+                continue
+            item["_fallback_from_history"] = True
+            item["_fallback_for_date"] = query_date
+            supplemented.append(item)
+            seen_urls.add(url)
+            added_by_task[task_type] = added_by_task.get(task_type, 0) + 1
+            need -= 1
+            if need <= 0:
+                break
+
+    return supplemented, {
+        "enabled": True,
+        "min_per_task": min_per_task,
+        "added": sum(added_by_task.values()),
+        "added_by_task": added_by_task,
+    }
 
 
 @router.get("")
@@ -1219,11 +1322,14 @@ async def get_logistics(date: str = "", refresh: bool = False):
         db_items = []
         db_error = str(exc)
 
-    if db_items and not refresh:
-        return await _finalize_logistics_response(
-            _format_logistics_response(db_items, query_date, from_db=True, error=db_error),
-            remember=True,
-        )
+    if not refresh:
+        db_items, fill_meta = await _supplement_db_items_by_task(db_items, query_date)
+        if db_items:
+            response = _format_logistics_response(db_items, query_date, from_db=True, error=db_error)
+            if fill_meta.get("added"):
+                response["fallback_fill"] = fill_meta
+                response["stale_mixed"] = True
+            return await _finalize_logistics_response(response, remember=True)
 
     if not refresh:
         fallback, source = _load_logistics_fallback(query_date)
@@ -1257,11 +1363,13 @@ async def get_logistics(date: str = "", refresh: bool = False):
             scraped = await _scrape_logistics()
             write_error = await _persist_logistics_payload(scraped)
             db_items = await run_in_threadpool(get_published, date=query_date, limit=200)
+            db_items, fill_meta = await _supplement_db_items_by_task(db_items, query_date)
             if db_items:
-                return await _finalize_logistics_response(
-                    _format_logistics_response(db_items, query_date, from_db=True, error=write_error),
-                    remember=True,
-                )
+                response = _format_logistics_response(db_items, query_date, from_db=True, error=write_error)
+                if fill_meta.get("added"):
+                    response["fallback_fill"] = fill_meta
+                    response["stale_mixed"] = True
+                return await _finalize_logistics_response(response, remember=True)
             if scraped.get("items"):
                 return await _finalize_logistics_response(
                     _format_logistics_cache_response(
