@@ -6,6 +6,15 @@ FROM python:3.12-slim
 
 LABEL description="晨间星闻 - 百运日报推送工具"
 
+# ===== 国内镜像加速 =====
+# 1. APT 阿里云源 (Debian Bookworm)
+RUN sed -i "s@http://deb.debian.org@https://mirrors.aliyun.com@g" /etc/apt/sources.list.d/debian.sources && \
+    sed -i "s@http://security.debian.org@https://mirrors.aliyun.com@g" /etc/apt/sources.list.d/debian.sources
+# 2. PyPI 阿里云镜像
+ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+# 3. Playwright 国内 CDN
+ENV PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/
+
 # Playwright 系统依赖（Chromium 渲染 JS 页面用）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \

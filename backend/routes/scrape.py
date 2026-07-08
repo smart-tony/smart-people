@@ -6,6 +6,7 @@ POST /api/scrape/fetch
 """
 
 import json
+import os
 import re
 import hashlib
 import asyncio
@@ -1450,6 +1451,135 @@ async def enrich_article_content(articles: list[RawArticle]) -> list[RawArticle]
 
 
 # ═══════════════════════════════════════════════════════════
+# Stage ②.5.5 — ContentAgent：可选 LLM 正文清洗
+# ═══════════════════════════════════════════════════════════
+
+CLEAN_WITH_LLM_TASKS = {
+    "logistics-daily",
+    "global-news",
+    "policy-official",
+    "crossborder-platform",
+    "shipping-port",
+    "cn-logistics-industry",
+    "global-logistics-risk",
+}
+
+CONTENT_NOISE_RE = re.compile(
+    r"客服|加我微信|公众号|微信扫一扫|扫码|返回顶部|上一篇|下一篇|相关阅读|相关推荐|"
+    r"版权所有|版权声明|联系我们|客服热线|当前位置|首页\s*>|分享到|点赞|在看|收藏|"
+    r"阅读\s*\d+|浏览\s*\d+|来源[:：]|作者[:：]|编辑[:：]|责任编辑|"
+    r"\b(?:copyright|all rights reserved|subscribe|newsletter|advertisement)\b",
+    re.I,
+)
+
+_CLEAN_SYSTEM_PROMPT = """你是内容清洗与排版助手。从网页抓取的原始文本中提取纯净正文并做基础排版。
+
+核心原则：
+- 只保留文章正文，去掉导航、客服、公众号、广告、版权、推荐阅读、上一篇/下一篇等非正文噪音
+- 不改写、不总结、不编造原文没有的信息
+- 如果无法判断正文，请返回原始文本中最像正文的连续段落，不要补充背景信息
+- 只输出清洗后的正文，不要输出说明、标题、引号或任何额外前后缀"""
+
+_CLEAN_USER_TEMPLATE = """请清洗以下网页抓取内容，去掉噪音，提取纯正文并排版。
+
+噪音示例（类似这些请全部删除）：
+- "壹流融媒 • 7分钟前 • 物流资讯 • 阅读 0"
+- "来源：XX公众号 作者：XX 编辑：XX"
+- "首页 > 新闻 > 行业动态"
+- "扫码加入粉丝群 | 客服热线：400-XXX | ©2024 XX网 版权所有"
+- "上一篇：XXX | 下一篇：XXX | 相关阅读：XXX"
+- "分享到朋友圈 点赞 在看 收藏"
+
+排版要求：
+1. 段落间空一行
+2. 被截断的中文短句合并到下一句
+3. 连续空行压缩为一个
+4. 中英文之间加空格："Delta 航空"、"GDP 增长"
+5. 数字与中文之间加空格："约 30 万吨"、"增长 15%"
+
+---开始清洗---
+
+{raw_text}"""
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _is_valid_cleaned_content(cleaned: str) -> bool:
+    text = (cleaned or "").strip()
+    if len(text) < 50:
+        return False
+    if re.search(r"我无法|作为(?:一个)?AI|以下是|清洗后|抱歉|无法判断", text):
+        return False
+    if not re.search(r"[\u4e00-\u9fffA-Za-z]", text):
+        return False
+    if not re.search(r"[。！？.!?]", text):
+        return False
+    return True
+
+
+def _should_clean_content_with_llm(article: RawArticle, task_type: str) -> bool:
+    if not _env_flag("CLEAN_WITH_LLM"):
+        return False
+    if task_type == "ai-weekly" or article.source_id == "by56-wiki":
+        return False
+    if task_type not in CLEAN_WITH_LLM_TASKS:
+        return False
+    body = (article.content_snippet or "").strip()
+    if len(body) < 80:
+        return False
+    return bool(CONTENT_NOISE_RE.search(body))
+
+
+def _clean_content_with_llm(raw_text: str) -> str:
+    """ContentAgent: LLM 提取正文 + 排版。失败时降级返回原文。"""
+    if not raw_text or len(raw_text) < 80:
+        return raw_text
+    try:
+        from routes.llm import get_llm_client
+
+        client = get_llm_client()
+        config = load_llm_config()
+        if not client:
+            return raw_text
+
+        response = client.chat.completions.create(
+            model=config.get("model", "deepseek-chat"),
+            messages=[
+                {"role": "system", "content": _CLEAN_SYSTEM_PROMPT},
+                {"role": "user", "content": _CLEAN_USER_TEMPLATE.format(raw_text=raw_text[:3000])},
+            ],
+            temperature=0,
+            max_tokens=1500,
+            timeout=10,
+        )
+        cleaned = response.choices[0].message.content.strip()
+        if not _is_valid_cleaned_content(cleaned):
+            return raw_text
+        return cleaned
+    except Exception:
+        return raw_text
+
+
+def clean_article_contents_with_llm(articles: list[RawArticle], task_type: str) -> tuple[list[RawArticle], int]:
+    """仅对物流/政策中疑似混入网页模板的正文做 LLM 清洗。"""
+    cleaned_count = 0
+    for article in articles:
+        if not _should_clean_content_with_llm(article, task_type):
+            continue
+        before = article.content_snippet or ""
+        after = _clean_content_with_llm(before)
+        if after != before:
+            article.content_snippet = after
+            cleaned_count += 1
+    return articles, cleaned_count
+
+
+# ═══════════════════════════════════════════════════════════
 # Stage ②.6 — 缓存：跳过已处理的 URL（7 天自动过期）
 # ═══════════════════════════════════════════════════════════
 
@@ -2241,6 +2371,16 @@ async def fetch_pipeline(req: FetchRequest):
     unique_articles, recency_messages = filter_recent_articles(unique_articles, req.recency_days)
     fetch_errors.extend(recency_messages)
 
+    # ⑥.6 可选正文清洗：仅对物流/政策中仍带导航/客服/公众号噪音的正文调用 LLM
+    if unique_articles:
+        unique_articles, cleaned_count = await run_in_threadpool(
+            clean_article_contents_with_llm,
+            unique_articles,
+            req.task_type,
+        )
+        if cleaned_count:
+            fetch_errors.append(f"ContentAgent 已清洗 {cleaned_count} 条正文模板噪音。")
+
     if not unique_articles and req.screen_with_llm and pre_screen_articles:
         fallback_articles = [
             article for article in pre_screen_articles
@@ -2251,6 +2391,13 @@ async def fetch_pipeline(req: FetchRequest):
             fallback_articles, fallback_messages = filter_recent_articles(fallback_articles, req.recency_days)
             fetch_errors.extend(fallback_messages)
             if fallback_articles:
+                fallback_articles, cleaned_count = await run_in_threadpool(
+                    clean_article_contents_with_llm,
+                    fallback_articles,
+                    req.task_type,
+                )
+                if cleaned_count:
+                    fetch_errors.append(f"ContentAgent 已清洗 {cleaned_count} 条补充正文模板噪音。")
                 unique_articles = fallback_articles
                 range_label = "今天/昨天" if req.recency_days == 2 else f"最近 {req.recency_days} 天"
                 fetch_errors.append(f"首轮筛选内容不符合{range_label}范围，已从剩余标题中补充候选。")
