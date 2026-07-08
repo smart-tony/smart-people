@@ -20,29 +20,5 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # 可选：容器内置定时抓取 sidecar
-  # 如果不想配主机 cron，取消下面注释即可
-  # cron-scraper:
-  #   build: .
-  #   container_name: morning-cron
-  #   restart: unless-stopped
-  #   depends_on:
-  #     morning-news:
-  #       condition: service_healthy
-  #   volumes:
-  #     - ./data:/app/data
-  #     - ./config:/app/config:ro
-  #   env_file:
-  #     - .env
-  #   command: >
-  #     sh -c '
-  #     echo "等待服务就绪..." &&
-  #     sleep 10 &&
-  #     while true; do
-  #       echo "$$(date) 触发抓取..." &&
-  #       curl -s -X POST http://morning-news:8000/api/admin/scrape-all &&
-  #       echo "" &&
-  #       sleep 900
-  #     done
-  #     '
+  # 定时刷新由 morning-news 服务内置 _auto_refresh_loop 负责，每 15 分钟一次。
+  # Docker 部署不再启动 cron_scraper.py --loop 或额外 sidecar，避免重复抓取。

@@ -69,7 +69,7 @@ async def _startup():
 
 
 async def _auto_refresh_loop():
-    """后台定时刷新：每 2 小时自动抓取物流数据，确保数据不中断。
+    """后台定时刷新：每 15 分钟自动抓取物流数据，确保数据不中断。
     即使无人访问，数据库中也始终有最新数据。
     """
     import asyncio
@@ -82,7 +82,7 @@ async def _auto_refresh_loop():
             _schedule_logistics_refresh("auto_refresh_loop")
         except Exception:
             pass
-        await asyncio.sleep(7200)  # 每 2 小时
+        await asyncio.sleep(900)  # 每 15 分钟
 
 
 @app.get("/api/health")

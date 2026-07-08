@@ -1192,7 +1192,7 @@ async def fetch_raw_articles(sources: list[dict], limit: int) -> tuple[list[RawA
 # Stage ②.5 — 抓取文章正文（并发版）
 # ═══════════════════════════════════════════════════════════
 
-def extract_body_text(html: str) -> str:
+def extract_body_text(html: str, title: str = "") -> str:
     """从文章页 HTML 提取正文文本（智能选择器 + 密集文本兜底）"""
     soup = BeautifulSoup(html, "html.parser")
 
@@ -1226,7 +1226,7 @@ def extract_body_text(html: str) -> str:
     for sel in article_selectors:
         el = soup.select_one(sel)
         if el:
-            text = el.get_text(" ", strip=True)
+            text = _clean_common_article_text(el.get_text(" ", strip=True), title)
             # 过滤太短的（可能是空的 article 标签）
             if len(text) >= 100:
                 return text[:3000] if len(text) > 3000 else text
@@ -1234,7 +1234,7 @@ def extract_body_text(html: str) -> str:
     # —— 策略 2：找文本密度最大的块级元素 ——
     candidates = []
     for el in soup.find_all(["div", "section", "main"]):
-        text = el.get_text(" ", strip=True)
+        text = _clean_common_article_text(el.get_text(" ", strip=True), title)
         # 忽略太短和太长的（太长的可能是整个页面）
         if 200 <= len(text) <= 10000:
             # 计算"实质文本密度"：文字长度 / 标签数量（标签越多越可能是导航）
@@ -1249,8 +1249,64 @@ def extract_body_text(html: str) -> str:
         return text[:3000] if len(text) > 3000 else text
 
     # —— 策略 3：兜底 ——
-    text = soup.get_text(" ", strip=True)
+    text = _clean_common_article_text(soup.get_text(" ", strip=True), title)
     return text[:3000] if len(text) > 3000 else text
+
+
+def _clean_common_article_text(text: str, title: str = "") -> str:
+    """清理资讯站正文中的站点模板、客服、公众号、返回顶部等噪音。"""
+    text = re.sub(r"^\ufeff+", "", text or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    if title:
+        text = re.sub(rf"^{re.escape(title)}(?:_跨境知道)?\s*", "", text)
+
+    noise_patterns = [
+        r"客服\s*跨境知道网客服.*?(?:返回顶部|$)",
+        r"加我微信.*?(?:返回顶部|$)",
+        r"有小雨，跨境出海不迷路",
+        r"公众号\s*跨境知道网公众号.*?(?:返回顶部|$)",
+        r"微信扫一扫关注.*?(?:返回顶部|$)",
+        r"及时了解最新跨境前沿资讯.*?(?:返回顶部|$)",
+        r"文章经授权转载自公众号[:：]\s*[^ ]+\s*",
+        r"客服电话[:：]?\s*[\d\-+() ]+.*?(?:©|$)",
+        r"邮箱[:：]?\s*[\w.+-]+@[\w.-]+.*?(?:©|$)",
+        r"WIFFA公众号.*?(?:©|$)",
+        r"舱哪儿云公众号.*?(?:©|$)",
+        r"国际海运网\s*©.*$",
+        r"^(?:当前位置[:：]\s*)?首页\s*>\s*[^ ]+\s*",
+        r"^首页\s*>\s*新闻发布(?:\s*>\s*[^ ]+)?\s*来源[:：][^ ]+\s*类型[:：][^ ]+\s*分类[:：][^ ]+\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s*",
+        r"本网站标明来源的其他媒体信息.*$",
+        r"返回顶部",
+        r"上一篇[:：]?.*",
+        r"下一篇[:：]?.*",
+        r"相关阅读.*",
+        r"相关推荐.*",
+    ]
+    for pattern in noise_patterns:
+        text = re.sub(pattern, " ", text, flags=re.I)
+    return re.sub(r"\s{2,}", " ", text).strip(" _-｜|")
+
+
+def extract_ikjzd_body_text(html: str, title: str = "") -> str:
+    """跨境知道文章页：正文在 .articlecontent，通用提取容易误命中客服浮层。"""
+    soup = BeautifulSoup(html, "html.parser")
+    candidates = []
+    for sel in [".articlecontent", ".mainbox.shownews .articlecontent", ".shownews .articlecontent"]:
+        for el in soup.select(sel):
+            text = _clean_common_article_text(el.get_text(" ", strip=True), title)
+            if len(text) >= 30:
+                candidates.append(text)
+
+    if candidates:
+        return max(candidates, key=len)[:3000]
+
+    meta = soup.find("meta", attrs={"name": "description"})
+    if meta and meta.get("content"):
+        text = _clean_common_article_text(meta.get("content", ""), title)
+        if len(text) >= 30:
+            return text[:3000]
+
+    return extract_body_text(html, title)
 
 
 def _clean_by56_text(text: str) -> str:
@@ -1361,8 +1417,10 @@ async def _enrich_one(article: RawArticle, client: httpx.AsyncClient) -> RawArti
         html_text = _decode_response_text(resp)
         if _host_matches(article.url, {"by56.com"}):
             article.content_snippet = extract_by56_body_text(html_text, article.title)
+        elif _host_matches(article.url, {"ikjzd.com"}):
+            article.content_snippet = extract_ikjzd_body_text(html_text, article.title)
         else:
-            article.content_snippet = extract_body_text(html_text)
+            article.content_snippet = extract_body_text(html_text, article.title)
         if not article.image:
             article.image = _extract_og_image(html_text)
     except Exception:
@@ -1371,8 +1429,10 @@ async def _enrich_one(article: RawArticle, client: httpx.AsyncClient) -> RawArti
                 html, _ = await _render_with_playwright(article.url, 800)
                 if _host_matches(article.url, {"by56.com"}):
                     article.content_snippet = extract_by56_body_text(html, article.title)
+                elif _host_matches(article.url, {"ikjzd.com"}):
+                    article.content_snippet = extract_ikjzd_body_text(html, article.title)
                 else:
-                    article.content_snippet = extract_body_text(html)
+                    article.content_snippet = extract_body_text(html, article.title)
                 if not article.image:
                     article.image = _extract_og_image(html)
             except Exception:

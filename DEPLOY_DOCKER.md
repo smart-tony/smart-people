@@ -46,33 +46,23 @@ weekly-push-tool/
 
 ## 三、定时抓取
 
-### 方式一：主机 cron（推荐）
+### 默认方式：服务内置自动刷新
 
-在宿主机添加 cron，每 15 分钟触发一次全量抓取：
+服务自带每 15 分钟自动刷新（`server.py` 的 `_auto_refresh_loop`），Docker 部署时无需再额外配置主机 cron、sidecar 或 `cron_scraper.py --loop`。
 
-```bash
-crontab -e
-```
+这样只保留一套调度入口，避免 cron、容器 loop、应用内循环同时触发，造成重复抓取、数据库写入竞争或接口被打满。
 
-添加：
-```
-# 晨间星闻 — 每15分钟抓取
-*/15 * * * * curl -s -X POST http://localhost:8000/api/admin/scrape-all >> /tmp/morning-scrape.log 2>&1
+### 清理服务器旧 cron
 
-# 每天 9:00 发布当天内容
-0 9 * * * curl -s -X POST http://localhost:8000/api/admin/publish-all >> /tmp/morning-publish.log 2>&1
-```
-
-### 方式二：容器内置自动刷新
-
-服务自带每 2 小时自动刷新（`server.py` 的 `_auto_refresh_loop`），无需额外配置。
-
-### 方式三：容器内 loop 脚本
+如果服务器之前已经配置过抓取 cron，上线本版本后删除抓取相关行：
 
 ```bash
-# 进入容器，启动持续抓取模式
-docker exec -d morning-news python cron_scraper.py --loop
+crontab -l
+crontab -l | grep -v 'cron_scraper.py' | grep -v '/api/admin/scrape-all' | crontab -
+crontab -l
 ```
+
+如果你还保留每天固定时间发布内容，只删除抓取行即可，不需要删除 `/api/admin/publish-all`。
 
 ## 四、管理操作
 

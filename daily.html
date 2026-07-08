@@ -245,9 +245,9 @@ function normalizeOps(item,idx){
     title:item.title||'无标题',
     source:item.source_name||item.source_id||item.source||'跨境情报源',
     url:item.source_url||item.url||'#',
-    summary:item.summary||item.ai_summary||item.analysis||item.ai_analysis||'',
-    analysis:item.analysis||item.ai_analysis||'',
-    score:item.score||item.ai_score||0,
+    summary:item.summary||item.ai_summary||'',
+    analysis:section==='wiki'?(item.analysis||item.ai_analysis||''):'',
+    score:section==='wiki'?0:(item.score||item.ai_score||0),
     tags:[item.label||item._task_label||task].concat(item.tags||item.ai_tags||[]).filter(Boolean),
     rawTask:task
   };
@@ -281,7 +281,7 @@ function card(item){
     <div class="item-meta">
       <span class="item-source">${esc(item.source)}</span>
       <span class="section-tag ${st.cls}">${st.label}</span>
-      ${score(item.score)?`<span class="item-score">${score(item.score)}</span>`:''}
+      ${item.section!=='wiki'&&score(item.score)?`<span class="item-score">${score(item.score)}</span>`:''}
     </div>
     <div class="item-title">${esc(item.title)}</div>
     ${item.summary?`<div class="item-summary">${esc(trimText(item.summary))}</div>`:''}

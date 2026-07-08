@@ -2,15 +2,12 @@
 """
 晨间星闻后台采集 Worker
 ================================
-由 cron 定时调用，串行抓取行业/政策来源，存入 data/logistics_cache.json
-API 直接读这个文件，秒级响应。
+历史采集 Worker，串行抓取行业/政策来源，存入 data/logistics_cache.json。
+当前 Docker 部署默认使用 server.py 内置 15 分钟自动刷新，不再启动本脚本的 --loop 模式。
 
 用法:
-  python cron_scraper.py          # 抓一次
-  python cron_scraper.py --loop   # 持续循环（每15分钟）
-
-cron 配置:
-  */15 * * * * cd /opt/weekly-push-tool && python cron_scraper.py
+  python cron_scraper.py          # 手动抓一次
+  python cron_scraper.py --loop   # 仅用于本地临时排查，不用于 Docker 部署
 """
 import json
 import sys
@@ -134,7 +131,7 @@ def scrape_all():
 
 def main():
     if "--loop" in sys.argv:
-        print(f"🔄 持续采集模式（每15分钟）")
+        print(f"🔄 持续采集模式（每15分钟，仅用于本地临时排查）")
         while True:
             print(f"\n{'='*50}")
             print(f"📡 {datetime.now().strftime('%H:%M:%S')} 开始采集...")

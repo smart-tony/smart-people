@@ -175,6 +175,42 @@ def _is_recruitment_item(title: str, summary: str, source_url: str = "") -> bool
     return bool(_RECRUITMENT_RE.search(" ".join([title or "", summary or "", source_url or ""])))
 
 
+def _clean_common_summary(summary: str, title: str = "") -> str:
+    """清理历史缓存/数据库里混入的站点模板、客服、公众号等噪音。"""
+    text = re.sub(r"^\ufeff+", "", summary or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    if title:
+        text = re.sub(rf"^{re.escape(title)}(?:\s*_跨境知道)?\s*", "", text)
+
+    noise_patterns = [
+        r"客服\s*跨境知道网客服.*?(?:返回顶部|$)",
+        r"加我微信.*?(?:返回顶部|$)",
+        r"有小雨，跨境出海不迷路",
+        r"公众号\s*跨境知道网公众号.*?(?:返回顶部|$)",
+        r"微信扫一扫关注.*?(?:返回顶部|$)",
+        r"及时了解最新跨境前沿资讯.*?(?:返回顶部|$)",
+        r"文章经授权转载自公众号[:：]\s*[^ ]+\s*",
+        r"客服电话[:：]?\s*[\d\-+() ]+.*?(?:©|$)",
+        r"邮箱[:：]?\s*[\w.+-]+@[\w.-]+.*?(?:©|$)",
+        r"WIFFA公众号.*?(?:©|$)",
+        r"舱哪儿云公众号.*?(?:©|$)",
+        r"国际海运网\s*©.*$",
+        r"^(?:当前位置[:：]\s*)?首页\s*>\s*[^ ]+\s*",
+        r"^首页\s*>\s*新闻发布(?:\s*>\s*[^ ]+)?\s*来源[:：][^ ]+\s*类型[:：][^ ]+\s*分类[:：][^ ]+\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s*",
+        r"本网站标明来源的其他媒体信息.*$",
+        r"返回顶部",
+        r"上一篇[:：]?.*",
+        r"下一篇[:：]?.*",
+        r"相关阅读.*",
+        r"相关推荐.*",
+    ]
+    for pattern in noise_patterns:
+        text = re.sub(pattern, " ", text, flags=re.I)
+
+    text = re.sub(r"\s{2,}", " ", text).strip(" _-｜|")
+    return text
+
+
 def _clean_by56_summary(summary: str, title: str = "") -> str:
     text = re.sub(r"\s+", " ", summary or "").strip()
     if title:
@@ -674,13 +710,17 @@ def _normalize_logistics_payload(
             or default_label
             or TASK_LABELS.get(task)
         )
-        summary = raw.get("summary") or raw.get("ai_summary") or raw.get("ai_analysis") or ""
+        raw_body_text = raw.get("body_text") or raw.get("content_snippet") or ""
+        summary = raw.get("summary") or raw.get("ai_summary") or raw_body_text or raw.get("ai_analysis") or ""
         score = raw.get("score", raw.get("ai_score", 0))
         tags = raw.get("tags", raw.get("ai_tags", [])) or []
         source_url = raw.get("source_url") or raw.get("url") or "#"
         title = _clean_feed_title(raw.get("title", ""))
         if not title or source_url == "#" or not _is_useful_feed_item(title, source_url):
             continue
+        summary = _clean_common_summary(summary, title)
+        if len(summary) < 30 and raw_body_text:
+            summary = _clean_common_summary(raw_body_text, title)
         # 过滤无实质内容的条目（导航页、空内容等）
         if not summary or len(summary) < 30:
             continue
@@ -696,10 +736,11 @@ def _normalize_logistics_payload(
         for noise in _noise_phrases:
             summary = summary.replace(noise, "")
         summary = re.sub(r"\s*[-–—|｜]\s*\S{2,8}(电商|物流|网|平台|资讯)\s*$", "", summary)
+        summary = _clean_common_summary(summary, title)
         if task == "by56-wiki":
             summary = _clean_by56_summary(summary, title)
-        body_text = raw.get("body_text") or raw.get("content_snippet") or ""
-        analysis = raw.get("analysis") or raw.get("ai_analysis") or ""
+        body_text = raw_body_text
+        analysis = ""
         if task == "by56-wiki":
             analysis = _build_by56_analysis(title, summary, body_text)
         if _is_recruitment_item(title, summary, source_url):
