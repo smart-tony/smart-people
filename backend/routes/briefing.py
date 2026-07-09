@@ -483,7 +483,7 @@ def _translate_display_item(item: dict, client, llm_config: dict, mode: str = "p
             "只包含 title 和 summary 两个字段。\n\n"
             "要求：\n"
             "- title：18-36个中文字符，直接体现空运/物流市场、运力、货量、航司、机场、运价或时效影响。\n"
-            "- summary：70-150个中文字符，说明对跨境物流业务可能影响；没有明确业务影响时只做客观摘要。\n"
+            "- summary：简明扼要地说明对跨境物流业务的可能影响，篇幅根据内容复杂度自行判断；没有明确业务影响时只做客观摘要。\n"
             "- 保留航空公司、机场、国家/地区、指数、机构名等关键名词。\n"
             "- 不得编造原文没有的数字、日期、运价变化或结论。\n"
             "- 不要营销化，不要输出招聘、活动报名、广告推广内容。\n\n"
@@ -500,7 +500,7 @@ def _translate_display_item(item: dict, client, llm_config: dict, mode: str = "p
             "只包含 title 和 summary 两个字段。\n\n"
             "要求：\n"
             "- title：20-38个中文字符，保留 USTR、CBP、OFAC、BIS、Section 301、Entity List 等机构名、法规编号或清单名称。\n"
-            "- summary：80-160个中文字符，用跨境物流销售、客服、操作能理解的话说明事实和可能影响。\n"
+            "- summary：简明扼要地说明事实和可能影响，用跨境物流销售、客服、操作能理解的话表达，篇幅自行判断。\n"
             "- 不得编造原文没有的日期、税率、HS编码、金额、生效时间或政策结论。\n"
             "- 如果原文只是机构/清单说明，未给出明确新政策或物流影响，请写明“物流影响需人工复核”。\n"
             "- 保持中性、准确，不要营销化。\n\n"
@@ -840,8 +840,8 @@ def _normalize_logistics_payload(
             if line.strip() and len(line.strip()) > 12
         )
         summary = re.sub(r"\s{2,}", " ", summary).strip()
-        if len(summary) > 200:
-            cut_pos = summary[:200].rfind("。")
+        if len(summary) > 500:
+            cut_pos = summary[:500].rfind("。")
             if cut_pos < 80:
                 cut_pos = summary[:200].rfind("，")
             if cut_pos < 80:
