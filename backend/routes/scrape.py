@@ -1709,8 +1709,12 @@ def deduplicate_by_url(articles: list[RawArticle]) -> list[RawArticle]:
     for key, group in groups.items():
         primary = max(group, key=lambda x: len(x.title))
         if len(group) > 1:
-            all_sources = ", ".join(set(a.source_name for a in group))
-            primary.source_name = f"{primary.source_name} (同步自 {all_sources})"
+            other_sources = sorted({
+                a.source_name for a in group
+                if a.source_name and a.source_name != primary.source_name
+            })
+            if other_sources:
+                primary.source_name = f"{primary.source_name} (同步自 {', '.join(other_sources)})"
         merged.append(primary)
 
     return merged

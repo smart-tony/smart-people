@@ -198,6 +198,7 @@ function todayText(){
 }
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function host(url){try{return new URL(url).hostname.replace(/^www\./,'')}catch(e){return ''}}
+function cleanSource(s){return String(s||'').replace(/\s*[\(（]同步自[\s\S]*?[\)）]\s*$/,'').trim()}
 function trimText(s,max=210){
   const text=String(s||'').replace(/\s+/g,' ').trim();
   if(text.length<=max)return text;
@@ -227,7 +228,7 @@ function normalizeAI(item,idx){
     id:'ai-'+idx,
     section:'tech',
     title:item.title||'无标题',
-    source:item.source||item.sourceName||item.source_name||'AI HOT',
+    source:cleanSource(item.source||item.sourceName||item.source_name||'AI HOT'),
     url:item.url||item.sourceUrl||item.source_url||'#',
     summary:item.summary||item.ai_summary||'',
     analysis:item.analysis||item.ai_analysis||'',
@@ -243,7 +244,7 @@ function normalizeOps(item,idx){
     id:'ops-'+idx,
     section,
     title:item.title||'无标题',
-    source:item.source_name||item.source_id||item.source||'跨境情报源',
+    source:cleanSource(item.source_name||item.source_id||item.source||'跨境情报源'),
     url:item.source_url||item.url||'#',
     summary:item.summary||item.ai_summary||'',
     analysis:section==='wiki'?(item.analysis||item.ai_analysis||''):'',
