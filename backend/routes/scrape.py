@@ -1233,27 +1233,45 @@ def _trafilatura_metadata(html: str) -> dict:
 
 
 def _extract_publish_date(html: str) -> str:
-    """多层兜底提取发布日期: trafilatura metadata → HTML meta → 正则 → 空"""
+    """多层兜底提取发布日期: HTML meta → trafilatura → 正则 → 空"""
     import re as _re
     from bs4 import BeautifulSoup as _BS
 
-    # 1. trafilatura metadata
-    meta = _trafilatura_metadata(html)
-    if meta.get("date"):
-        return meta["date"]
+    def _valid_date(d: str) -> bool:
+        """过滤假日期: 1月1日、超过1年的、非法格式"""
+        if not d or len(d) < 8:
+            return False
+        m = _re.match(r"(20\d{2})[/-]?(\d{1,2})[/-]?(\d{1,2})", d)
+        if m:
+            month, day = int(m.group(2)), int(m.group(3))
+            if month == 1 and day == 1:   # "2026-01-01" 多为默认值
+                return False
+            # 年份不能太离谱
+            year = int(m.group(1))
+            if year < 2020 or year > 2027:
+                return False
+            return True
+        return False
 
-    # 2. HTML meta 标签 (article:published_time / date / pubdate)
     soup = _BS(html, "html.parser")
+
+    # 1. HTML meta 标签 (最可靠)
     for sel in ['meta[property="article:published_time"]', 'meta[name="date"]',
                 'meta[name="pubdate"]', 'meta[itemprop="datePublished"]',
                 'meta[name="publishdate"]', 'time[datetime]']:
         el = soup.select_one(sel)
         if el:
             val = el.get("content") or el.get("datetime") or ""
-            if val:
-                return _re.sub(r"T.*", "", val).strip()  # 只取日期部分
+            val = _re.sub(r"T.*", "", val).strip()
+            if _valid_date(val):
+                return val
 
-    # 3. 中文正则兜底: "2026年7月9日" / "2026-07-09" / "7月9日"
+    # 2. trafilatura metadata (部分网站会有假日期，用 _valid_date 过滤)
+    meta = _trafilatura_metadata(html)
+    if meta.get("date") and _valid_date(meta["date"]):
+        return meta["date"]
+
+    # 3. 中文正则兜底: "2026年7月9日" / "7月9日"
     text = soup.get_text(" ", strip=True)[:2000]
     for pat in [r'(20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}[日]?)',
                 r'(\d{1,2}月\d{1,2}日)']:
