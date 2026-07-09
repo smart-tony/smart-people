@@ -17,6 +17,7 @@ from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import httpx
+import trafilatura
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
@@ -34,18 +35,8 @@ CACHE_DIR = DATA_DIR / "cache"
 router = APIRouter(prefix="/api/scrape", tags=["采集管道"], dependencies=[Depends(require_auth)])
 
 PLAYWRIGHT_SOURCE_DOMAINS = {
-    "openai.com",
-    "venturebeat.com",
-    "jiqizhixin.com",
-    "qbitai.com",
-    "huxiu.com",
+    # 仅保留物流/跨境相关，AI科技域名已移除
     "kjdsnews.com",
-    "microsoft.ai",
-    "blogs.microsoft.com",
-    "research.google",
-    "developer.nvidia.com",
-    "ebrun.com",
-    "x.ai",
     "shippingchina.com",
 }
 PLAYWRIGHT_ARTICLE_DOMAINS = set(PLAYWRIGHT_SOURCE_DOMAINS)
@@ -54,6 +45,13 @@ RECRUITMENT_RE = re.compile(
     r"招聘|求职|职位|岗位|诚聘|急招|招募|人才招聘|简历|投递|薪资|"
     r"工作机会|热门职位|加入我们|社招|校招|内推|"
     r"\b(?:hiring|job|jobs|career|careers|recruit|recruitment|resume|cv)\b",
+    re.I,
+)
+ARTICLE_META_PREFIX_RE = re.compile(
+    r"^(?:[\u4e00-\u9fffA-Za-z0-9&＋+_.·・\-]{2,30}\s*[•·]\s*)?"
+    r"(?:刚刚|\d+\s*(?:秒|分钟|小时|天|周|月)前|20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}(?:日)?)\s*"
+    r"(?:[•·]\s*(?!(?:阅读|浏览|点击)\b)[^•·]{1,20}){0,2}\s*"
+    r"(?:[•·]\s*(?:阅读|浏览|点击)\s*\d+)?\s*",
     re.I,
 )
 
@@ -199,188 +197,8 @@ def pick_sources(task_type: str, source_ids: list[str]) -> list[dict]:
 # Stage ② — 专用选择器：按来源域名匹配解析策略
 # ═══════════════════════════════════════════════════════════
 
-# 来源域名 → 自定义提取函数
+# 站点域名 → 专用提取器（仅物流/政策/跨境站点）
 # 每个函数签名: (soup: BeautifulSoup, base_url: str, max_items: int) -> list[RawArticle]
-
-def _extract_openai(soup, base_url, max_items):
-    """OpenAI Blog: 列表页是 <article> 或 <li> 含 <a> + <time>"""
-    articles = []
-    for item in soup.select("article a[href], li a[href]"):
-        title = " ".join(item.get_text(" ", strip=True).split())
-        href = urljoin(base_url, item["href"].strip())
-        if not title or len(title) < 15:
-            continue
-        if not href.startswith("https://openai.com/index/"):
-            continue
-        key = f"{title[:60]}{href}"
-        if any(a.url == href for a in articles):
-            continue
-        articles.append(RawArticle(title=title, url=href))
-        if len(articles) >= max_items:
-            break
-    return articles
-
-
-def _extract_venturebeat(soup, base_url, max_items):
-    """VentureBeat: 文章链接在 h2/h3 > a 中"""
-    articles = []
-    for a in soup.select("h2 a, h3 a, .article-title a"):
-        title = " ".join(a.get_text(" ", strip=True).split())
-        href = urljoin(base_url, a["href"].strip())
-        if not title or len(title) < 15:
-            continue
-        if not href.startswith("https://venturebeat.com/"):
-            continue
-        if any(a.url == href for a in articles):
-            continue
-        articles.append(RawArticle(title=title, url=href))
-        if len(articles) >= max_items:
-            break
-    return articles
-
-
-def _extract_jiqizhixin(soup, base_url, max_items):
-    """机器之心: 文章在 .article-title 或 h2/h3 > a"""
-    articles = []
-    for a in soup.select(".article-title a, h2 a, h3 a, .title a"):
-        title = " ".join(a.get_text(" ", strip=True).split())
-        href = urljoin(base_url, a["href"].strip())
-        if not title or len(title) < 10:
-            continue
-        if not href.startswith("https://www.jiqizhixin.com/"):
-            continue
-        if any(a_art.url == href for a_art in articles):
-            continue
-        articles.append(RawArticle(title=title, url=href))
-        if len(articles) >= max_items:
-            break
-    return articles
-
-
-def _extract_qbitai(soup, base_url, max_items):
-    """量子位: 文章在 .article-list 或 h2/h3 > a"""
-    articles = []
-    for a in soup.select(".article-list a, h2 a, h3 a, .title a, .news-title a"):
-        title = " ".join(a.get_text(" ", strip=True).split())
-        href = urljoin(base_url, a["href"].strip())
-        if not title or len(title) < 10:
-            continue
-        if not href.startswith("https://www.qbitai.com/"):
-            continue
-        if any(a_art.url == href for a_art in articles):
-            continue
-        articles.append(RawArticle(title=title, url=href))
-        if len(articles) >= max_items:
-            break
-    return articles
-
-
-def _extract_huxiu(soup, base_url, max_items):
-    """虎嗅: 文章在 .article-item 或 h2/h3 > a"""
-    articles = []
-    for a in soup.select(".article-item a, h2 a, h3 a, .title a"):
-        title = " ".join(a.get_text(" ", strip=True).split())
-        href = urljoin(base_url, a["href"].strip())
-        if not title or len(title) < 10:
-            continue
-        if not href.startswith("https://www.huxiu.com/"):
-            continue
-        if any(a_art.url == href for a_art in articles):
-            continue
-        articles.append(RawArticle(title=title, url=href))
-        if len(articles) >= max_items:
-            break
-    return articles
-
-
-def _extract_microsoft_ai(soup, base_url, max_items):
-    """Microsoft AI Blog: 文章在 article 或 blog-post 中"""
-    articles = []
-    for a in soup.select("article a[href], .blog-post a[href], h2 a, h3 a"):
-        title = " ".join(a.get_text(" ", strip=True).split())
-        href = urljoin(base_url, a["href"].strip())
-        if not title or len(title) < 15:
-            continue
-        if not (href.startswith("https://microsoft.ai/") or href.startswith("https://blogs.microsoft.com/")):
-            continue
-        if any(a_art.url == href for a_art in articles):
-            continue
-        articles.append(RawArticle(title=title, url=href))
-        if len(articles) >= max_items:
-            break
-    return articles
-
-
-def _extract_google_research(soup, base_url, max_items):
-    """Google Research Blog: 文章在 h2 > a 或 .post-title > a"""
-    articles = []
-    for a in soup.select("h2 a, h3 a, .post-title a, .entry-title a"):
-        title = " ".join(a.get_text(" ", strip=True).split())
-        href = urljoin(base_url, a["href"].strip())
-        if not title or len(title) < 15:
-            continue
-        if not href.startswith("https://research.google/blog/"):
-            continue
-        if any(a_art.url == href for a_art in articles):
-            continue
-        articles.append(RawArticle(title=title, url=href))
-        if len(articles) >= max_items:
-            break
-    return articles
-
-
-def _extract_nvidia_dev(soup, base_url, max_items):
-    """NVIDIA Developer Blog: 文章在 h2/h3 > a"""
-    articles = []
-    for a in soup.select("h2 a, h3 a, .post-title a, .entry-title a"):
-        title = " ".join(a.get_text(" ", strip=True).split())
-        href = urljoin(base_url, a["href"].strip())
-        if not title or len(title) < 15:
-            continue
-        if not href.startswith("https://developer.nvidia.com/blog/"):
-            continue
-        if any(a_art.url == href for a_art in articles):
-            continue
-        articles.append(RawArticle(title=title, url=href))
-        if len(articles) >= max_items:
-            break
-    return articles
-
-
-def _extract_anthropic(soup, base_url, max_items):
-    """Anthropic Research: 文章在 h2 > a 或 article > a"""
-    articles = []
-    for a in soup.select("h2 a, h3 a, article a[href], .post-card a"):
-        title = " ".join(a.get_text(" ", strip=True).split())
-        href = urljoin(base_url, a["href"].strip())
-        if not title or len(title) < 15:
-            continue
-        if not href.startswith("https://www.anthropic.com/research/"):
-            continue
-        if any(a_art.url == href for a_art in articles):
-            continue
-        articles.append(RawArticle(title=title, url=href))
-        if len(articles) >= max_items:
-            break
-    return articles
-
-
-def _extract_xai(soup, base_url, max_items):
-    """xAI Blog: 文章在 h2/h3 > a 或 article"""
-    articles = []
-    for a in soup.select("h2 a, h3 a, article a[href]"):
-        title = " ".join(a.get_text(" ", strip=True).split())
-        href = urljoin(base_url, a["href"].strip())
-        if not title or len(title) < 10:
-            continue
-        if not href.startswith("https://x.ai/"):
-            continue
-        if any(a_art.url == href for a_art in articles):
-            continue
-        articles.append(RawArticle(title=title, url=href))
-        if len(articles) >= max_items:
-            break
-    return articles
 
 
 def _extract_kjdsnews(soup, base_url, max_items):
@@ -1006,18 +824,8 @@ def _extract_shippingchina_medium_news(soup, base_url, max_items):
 
 
 _EXTRACTORS = {
-    "openai.com": _extract_openai,
-    "venturebeat.com": _extract_venturebeat,
-    "jiqizhixin.com": _extract_jiqizhixin,
-    "qbitai.com": _extract_qbitai,
-    "huxiu.com": _extract_huxiu,
+    # 仅保留物流/政策/跨境源，AI科技提取器已移除
     "kjdsnews.com": _extract_kjdsnews,
-    "microsoft.ai": _extract_microsoft_ai,
-    "blogs.microsoft.com": _extract_microsoft_ai,
-    "research.google": _extract_google_research,
-    "developer.nvidia.com": _extract_nvidia_dev,
-    "anthropic.com": _extract_anthropic,
-    "x.ai": _extract_xai,
     "mofcom.gov.cn": _extract_mofcom,
     "wl123.com": _extract_wl123,
     "chwang.com": _extract_chwang,
@@ -1258,6 +1066,7 @@ def _clean_common_article_text(text: str, title: str = "") -> str:
     """清理资讯站正文中的站点模板、客服、公众号、返回顶部等噪音。"""
     text = re.sub(r"^\ufeff+", "", text or "")
     text = re.sub(r"\s+", " ", text).strip()
+    text = ARTICLE_META_PREFIX_RE.sub("", text).strip()
     if title:
         text = re.sub(rf"^{re.escape(title)}(?:_跨境知道)?\s*", "", text)
 
@@ -1285,6 +1094,7 @@ def _clean_common_article_text(text: str, title: str = "") -> str:
     ]
     for pattern in noise_patterns:
         text = re.sub(pattern, " ", text, flags=re.I)
+    text = ARTICLE_META_PREFIX_RE.sub("", text).strip()
     return re.sub(r"\s{2,}", " ", text).strip(" _-｜|")
 
 
@@ -1405,8 +1215,35 @@ def _extract_og_image(html: str) -> str:
     return ""
 
 
+def _trafilatura_extract(html: str) -> str:
+    """用 trafilatura 提取正文（同步函数，由线程池调用）"""
+    return trafilatura.extract(html, include_links=False, include_images=False) or ""
+
+
+def _trafilatura_metadata(html: str) -> dict:
+    """用 trafilatura 提取元数据"""
+    try:
+        raw = trafilatura.extract(html, output_format="json", with_metadata=True)
+        if raw:
+            import json as _json
+            return _json.loads(raw)
+    except Exception:
+        pass
+    return {}
+
+
+def _fallback_extract_body(html: str, article) -> str:
+    """trafilatura 失败时的回退方案 — 保留原有选择器逻辑"""
+    if _host_matches(article.url, {"by56.com"}):
+        return extract_by56_body_text(html, article.title)
+    elif _host_matches(article.url, {"ikjzd.com"}):
+        return extract_ikjzd_body_text(html, article.title)
+    else:
+        return extract_body_text(html, article.title)
+
+
 async def _enrich_one(article: RawArticle, client: httpx.AsyncClient) -> RawArticle:
-    """并发抓取单篇文章正文和封面图"""
+    """并发抓取单篇文章正文和封面图 — trafilatura 优先，回退手写选择器"""
     try:
         resp = await client.get(
             article.url,
@@ -1416,26 +1253,44 @@ async def _enrich_one(article: RawArticle, client: httpx.AsyncClient) -> RawArti
         )
         resp.raise_for_status()
         html_text = _decode_response_text(resp)
-        if _host_matches(article.url, {"by56.com"}):
-            article.content_snippet = extract_by56_body_text(html_text, article.title)
-        elif _host_matches(article.url, {"ikjzd.com"}):
-            article.content_snippet = extract_ikjzd_body_text(html_text, article.title)
-        else:
-            article.content_snippet = extract_body_text(html_text, article.title)
+
+        # trafilatura 提取正文（同步函数，跑在线程池避免阻塞事件循环）
+        loop = asyncio.get_event_loop()
+        try:
+            extracted = await loop.run_in_executor(None, _trafilatura_extract, html_text)
+            if extracted and len(extracted) >= 80:
+                article.content_snippet = extracted
+                # 尝试提取元数据补充日期
+                meta = await loop.run_in_executor(None, _trafilatura_metadata, html_text)
+                if meta.get("date"):
+                    article.content_snippet = f"[发布日期: {meta['date']}]\n\n{article.content_snippet}"
+            else:
+                article.content_snippet = _fallback_extract_body(html_text, article)
+        except Exception:
+            article.content_snippet = _fallback_extract_body(html_text, article)
+
         if not article.image:
             article.image = _extract_og_image(html_text)
+
+        # 保存原始HTML用于后续LLM清洗
+        article._html_text = html_text
+
     except Exception:
         if _host_matches(article.url, PLAYWRIGHT_ARTICLE_DOMAINS):
             try:
                 html, _ = await _render_with_playwright(article.url, 800)
-                if _host_matches(article.url, {"by56.com"}):
-                    article.content_snippet = extract_by56_body_text(html, article.title)
-                elif _host_matches(article.url, {"ikjzd.com"}):
-                    article.content_snippet = extract_ikjzd_body_text(html, article.title)
-                else:
-                    article.content_snippet = extract_body_text(html, article.title)
+                loop = asyncio.get_event_loop()
+                try:
+                    extracted = await loop.run_in_executor(None, _trafilatura_extract, html)
+                    if extracted and len(extracted) >= 80:
+                        article.content_snippet = extracted
+                    else:
+                        article.content_snippet = _fallback_extract_body(html, article)
+                except Exception:
+                    article.content_snippet = _fallback_extract_body(html, article)
                 if not article.image:
                     article.image = _extract_og_image(html)
+                article._html_text = html
             except Exception:
                 pass
     return article

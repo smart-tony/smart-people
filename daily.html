@@ -169,10 +169,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",s
 <script>
 const SECTIONS=[
   {id:'all',label:'全部'},
-  {id:'tech',label:'科技动态'},
   {id:'industry',label:'行业动态'},
+  {id:'policy',label:'政策动态'},
   {id:'wiki',label:'百运百科'},
-  {id:'policy',label:'政策动态'}
+  {id:'tech',label:'科技动态'}
 ];
 const STYLE={
   tech:{label:'科技动态',cls:'tech',color:'var(--tech)',note:'AI 模型、产品、工具、论文和开发者生态'},
@@ -180,7 +180,7 @@ const STYLE={
   wiki:{label:'百运百科',cls:'wiki',color:'var(--wiki)',note:'百运官方知识、渠道说明、清关/FBA/空海运实操沉淀'},
   policy:{label:'政策动态',cls:'policy',color:'var(--policy)',note:'关税政策、海关规则、制裁出口管制、地缘风险'}
 };
-const ORDER=['tech','industry','wiki','policy'];
+const ORDER=['industry','policy','wiki','tech'];
 const AI_LABELS={'ai-models':'模型发布','ai-products':'产品更新','industry':'AI 行业','paper':'论文研究','tip':'技巧观点'};
 const POLICY_TASKS=new Set(['policy-official']);
 const POLICY_HINT_TASKS=new Set(['global-news']);

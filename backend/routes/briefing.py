@@ -96,6 +96,13 @@ _RECRUITMENT_RE = re.compile(
     r"\b(?:hiring|job|jobs|career|careers|recruit|recruitment|resume|cv)\b",
     re.I,
 )
+_ARTICLE_META_PREFIX_RE = re.compile(
+    r"^(?:[\u4e00-\u9fffA-Za-z0-9&＋+_.·・\-]{2,30}\s*[•·]\s*)?"
+    r"(?:刚刚|\d+\s*(?:秒|分钟|小时|天|周|月)前|20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}(?:日)?)\s*"
+    r"(?:[•·]\s*(?!(?:阅读|浏览|点击)\b)[^•·]{1,20}){0,2}\s*"
+    r"(?:[•·]\s*(?:阅读|浏览|点击)\s*\d+)?\s*",
+    re.I,
+)
 _POLICY_DISPLAY_RE = re.compile(
     r"关税|税率|Section\s*301|Section\s*232|反倾销|反补贴|贸易救济|贸易摩擦|"
     r"tariff|duties|anti-dumping|countervailing|customs duty|de minimis|"
@@ -184,6 +191,7 @@ def _clean_common_summary(summary: str, title: str = "") -> str:
     """清理历史缓存/数据库里混入的站点模板、客服、公众号等噪音。"""
     text = re.sub(r"^\ufeff+", "", summary or "")
     text = re.sub(r"\s+", " ", text).strip()
+    text = _ARTICLE_META_PREFIX_RE.sub("", text).strip()
     if title:
         text = re.sub(rf"^{re.escape(title)}(?:\s*_跨境知道)?\s*", "", text)
 
@@ -212,6 +220,7 @@ def _clean_common_summary(summary: str, title: str = "") -> str:
     for pattern in noise_patterns:
         text = re.sub(pattern, " ", text, flags=re.I)
 
+    text = _ARTICLE_META_PREFIX_RE.sub("", text).strip()
     text = re.sub(r"\s{2,}", " ", text).strip(" _-｜|")
     return text
 
