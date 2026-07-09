@@ -7,3 +7,4 @@ output/*.md
 data/*.db
 data/*.json
 data/cache/
+.codex_deps/
