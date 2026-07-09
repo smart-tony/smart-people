@@ -1220,66 +1220,110 @@ def _trafilatura_extract(html: str) -> str:
     return trafilatura.extract(html, include_links=False, include_images=False) or ""
 
 
-def _trafilatura_metadata(html: str) -> dict:
-    """用 trafilatura 提取元数据"""
-    try:
-        raw = trafilatura.extract(html, output_format="json", with_metadata=True)
-        if raw:
-            import json as _json
-            return _json.loads(raw)
-    except Exception:
-        pass
-    return {}
-
-
 def _extract_publish_date(html: str) -> str:
-    """多层兜底提取发布日期: HTML meta → trafilatura → 正则 → 空"""
-    import re as _re
-    from bs4 import BeautifulSoup as _BS
+    """从原始 HTML 读取发布日期；正文提取交给 trafilatura。"""
+    soup = BeautifulSoup(html, "html.parser")
 
-    def _valid_date(d: str) -> bool:
-        """过滤假日期: 1月1日、超过1年的、非法格式"""
-        if not d or len(d) < 8:
-            return False
-        m = _re.match(r"(20\d{2})[/-]?(\d{1,2})[/-]?(\d{1,2})", d)
-        if m:
-            month, day = int(m.group(2)), int(m.group(3))
-            if month == 1 and day == 1:   # "2026-01-01" 多为默认值
-                return False
-            # 年份不能太离谱
-            year = int(m.group(1))
-            if year < 2020 or year > 2027:
-                return False
-            return True
-        return False
+    def normalize_date(raw: str) -> str:
+        raw = re.sub(r"\s+", " ", raw or "").strip()
+        if not raw:
+            return ""
 
-    soup = _BS(html, "html.parser")
+        def build_date(year: int, month: int, day: int) -> str:
+            if not 2020 <= year <= datetime.now().year + 1:
+                return ""
+            try:
+                return datetime(year, month, day).date().isoformat()
+            except ValueError:
+                return ""
 
-    # 1. HTML meta 标签 (最可靠)
-    for sel in ['meta[property="article:published_time"]', 'meta[name="date"]',
-                'meta[name="pubdate"]', 'meta[itemprop="datePublished"]',
-                'meta[name="publishdate"]', 'time[datetime]']:
-        el = soup.select_one(sel)
-        if el:
-            val = el.get("content") or el.get("datetime") or ""
-            val = _re.sub(r"T.*", "", val).strip()
-            if _valid_date(val):
-                return val
+        match = re.search(r"(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})日?", raw)
+        if match:
+            year, month, day = [int(x) for x in match.groups()]
+            return build_date(year, month, day)
 
-    # 2. trafilatura metadata (部分网站会有假日期，用 _valid_date 过滤)
-    meta = _trafilatura_metadata(html)
-    if meta.get("date") and _valid_date(meta["date"]):
-        return meta["date"]
+        match = re.search(r"(20\d{2})(\d{2})(\d{2})", raw)
+        if match:
+            year, month, day = [int(x) for x in match.groups()]
+            return build_date(year, month, day)
 
-    # 3. 中文正则兜底: "2026年7月9日" / "7月9日"
-    text = soup.get_text(" ", strip=True)[:2000]
-    for pat in [r'(20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}[日]?)',
-                r'(\d{1,2}月\d{1,2}日)']:
-        m = _re.search(pat, text)
-        if m:
-            return m.group(1)
+        match = re.search(r"(?<!\d)(\d{1,2})月(\d{1,2})日", raw)
+        if match:
+            year = datetime.now().year
+            month, day = int(match.group(1)), int(match.group(2))
+            return build_date(year, month, day)
 
-    return ""
+        return ""
+
+    # 1. 结构化发布时间，优先级最高。
+    for script in soup.find_all("script", attrs={"type": re.compile(r"ld\+json", re.I)}):
+        try:
+            payload = json.loads(script.string or script.get_text("", strip=True) or "{}")
+        except json.JSONDecodeError:
+            continue
+        stack = payload if isinstance(payload, list) else [payload]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, list):
+                stack.extend(node)
+                continue
+            if not isinstance(node, dict):
+                continue
+            for key in ("datePublished", "dateModified", "uploadDate"):
+                parsed = normalize_date(str(node.get(key) or ""))
+                if parsed:
+                    return parsed
+            for value in node.values():
+                if isinstance(value, (dict, list)):
+                    stack.append(value)
+
+    selectors = [
+        'meta[property="article:published_time"]',
+        'meta[property="article:modified_time"]',
+        'meta[name="date"]',
+        'meta[name="pubdate"]',
+        'meta[name="publishdate"]',
+        'meta[name="publish_date"]',
+        'meta[itemprop="datePublished"]',
+        'meta[itemprop="dateModified"]',
+        'time[datetime]',
+    ]
+    for sel in selectors:
+        for el in soup.select(sel):
+            parsed = normalize_date(el.get("content") or el.get("datetime") or el.get_text(" ", strip=True))
+            if parsed:
+                return parsed
+
+    # 2. 页面显式日期区域，例如 by56 的 detail-date。
+    date_nodes = soup.select(
+        '[class*="date"], [class*="time"], [class*="publish"], [class*="pub"], '
+        '[id*="date"], [id*="time"], [id*="publish"], [id*="pub"]'
+    )
+    for el in date_nodes[:80]:
+        parsed = normalize_date(el.get_text(" ", strip=True))
+        if parsed:
+            return parsed
+
+    # 3. 原始页面文本兜底，只在日期关键词附近找，减少图片路径等干扰。
+    text = soup.get_text(" ", strip=True)
+    keyword_match = re.search(
+        r"(?:发布日期|发布时间|发表时间|更新时间|更新于|发布于|时间|日期)"
+        r"[^。；;]{0,80}(20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?)",
+        text,
+    )
+    if keyword_match:
+        parsed = normalize_date(keyword_match.group(1))
+        if parsed:
+            return parsed
+
+    parsed = normalize_date(text[:3000])
+    return parsed
+
+
+def _prepend_publish_date(text: str, publish_date: str) -> str:
+    if not text or not publish_date or text.lstrip().startswith("[发布日期:"):
+        return text
+    return f"[发布日期: {publish_date}]\n\n{text}"
 
 
 def _fallback_extract_body(html: str, article) -> str:
@@ -1303,21 +1347,18 @@ async def _enrich_one(article: RawArticle, client: httpx.AsyncClient) -> RawArti
         )
         resp.raise_for_status()
         html_text = _decode_response_text(resp)
+        date_str = _extract_publish_date(html_text)
 
         # trafilatura 提取正文（同步函数，跑在线程池避免阻塞事件循环）
         loop = asyncio.get_event_loop()
         try:
             extracted = await loop.run_in_executor(None, _trafilatura_extract, html_text)
             if extracted and len(extracted) >= 80:
-                article.content_snippet = extracted
-                # 多层兜底提取发布日期
-                date_str = _extract_publish_date(html_text)
-                if date_str:
-                    article.content_snippet = f"[发布日期: {date_str}]\n\n{article.content_snippet}"
+                article.content_snippet = _prepend_publish_date(extracted, date_str)
             else:
-                article.content_snippet = _fallback_extract_body(html_text, article)
+                article.content_snippet = _prepend_publish_date(_fallback_extract_body(html_text, article), date_str)
         except Exception:
-            article.content_snippet = _fallback_extract_body(html_text, article)
+            article.content_snippet = _prepend_publish_date(_fallback_extract_body(html_text, article), date_str)
 
         if not article.image:
             article.image = _extract_og_image(html_text)
@@ -1329,18 +1370,16 @@ async def _enrich_one(article: RawArticle, client: httpx.AsyncClient) -> RawArti
         if _host_matches(article.url, PLAYWRIGHT_ARTICLE_DOMAINS):
             try:
                 html, _ = await _render_with_playwright(article.url, 800)
+                date_str = _extract_publish_date(html)
                 loop = asyncio.get_event_loop()
                 try:
                     extracted = await loop.run_in_executor(None, _trafilatura_extract, html)
                     if extracted and len(extracted) >= 80:
-                        article.content_snippet = extracted
-                        date_str = _extract_publish_date(html)
-                        if date_str:
-                            article.content_snippet = f"[发布日期: {date_str}]\n\n{article.content_snippet}"
+                        article.content_snippet = _prepend_publish_date(extracted, date_str)
                     else:
-                        article.content_snippet = _fallback_extract_body(html, article)
+                        article.content_snippet = _prepend_publish_date(_fallback_extract_body(html, article), date_str)
                 except Exception:
-                    article.content_snippet = _fallback_extract_body(html, article)
+                    article.content_snippet = _prepend_publish_date(_fallback_extract_body(html, article), date_str)
                 if not article.image:
                     article.image = _extract_og_image(html)
                 article._html_text = html
@@ -1417,6 +1456,16 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 def _is_valid_cleaned_content(cleaned: str) -> bool:
     text = (cleaned or "").strip()
     if len(text) < 50:
@@ -1485,6 +1534,148 @@ def clean_article_contents_with_llm(articles: list[RawArticle], task_type: str) 
             article.content_snippet = after
             cleaned_count += 1
     return articles, cleaned_count
+
+
+LONG_BODY_COMPACT_TASKS = {
+    "logistics-daily",
+    "global-news",
+    "policy-official",
+    "crossborder-platform",
+    "shipping-port",
+    "by56-wiki",
+    "cn-logistics-industry",
+    "global-logistics-risk",
+}
+
+_COMPACT_SYSTEM_PROMPT = """你是晨间星闻的正文精炼助手。输入是 trafilatura 提取后的文章正文。
+
+你的任务：
+- 保留原文中的事实、数字、时间、国家/地区、平台/航司/港口/政策名称
+- 删除铺垫、重复表述、营销口号和不影响理解的细节
+- 不编造，不扩写，不加入原文没有的判断
+- 不输出标题、解释、Markdown 或前后缀
+- 只输出 JSON"""
+
+_COMPACT_USER_TEMPLATE = """请把下面正文精炼成适合跨境物流销售、客服、操作快速阅读的内容。
+
+字段要求：
+- compact_text：300-500 字，复杂政策/长行业报道最多 700 字
+- 如果原文是政策/清关/制裁/关税，必须保留生效时间、涉及国家、品类/HS编码、业务影响；原文没有就不要编
+- 如果原文是行业/平台/航运动态，必须保留事件主体、变化、影响范围、时效/成本/清关/发货影响
+- 语言用中文；英文专有名词可保留
+
+请严格输出 JSON：
+{{"compact_text":"..."}}
+
+标题：{title}
+来源：{source_name}
+模块：{task_type}
+
+正文：
+{raw_text}"""
+
+
+def _split_publish_date_prefix(text: str) -> tuple[str, str]:
+    match = re.match(r"\s*\[发布日期:\s*([^\]]+)\]\s*(.*)", text or "", re.S)
+    if not match:
+        return "", text or ""
+    return match.group(1).strip(), match.group(2).strip()
+
+
+def _should_compact_long_body_with_llm(article: RawArticle, task_type: str) -> bool:
+    if not _env_flag("COMPACT_LONG_BODY_WITH_LLM", True):
+        return False
+    if task_type == "ai-weekly" or task_type not in LONG_BODY_COMPACT_TASKS:
+        return False
+    _, body = _split_publish_date_prefix(article.content_snippet or "")
+    min_chars = max(800, _env_int("COMPACT_LONG_BODY_MIN_CHARS", 1800))
+    return len(body.strip()) >= min_chars
+
+
+def _is_valid_compacted_content(compacted: str, original_body: str) -> bool:
+    text = re.sub(r"\s+", " ", compacted or "").strip()
+    if len(text) < 80:
+        return False
+    if len(text) > max(900, len(original_body) * 0.9):
+        return False
+    if re.search(r"我无法|作为(?:一个)?AI|以下是|精炼后|抱歉|无法判断", text):
+        return False
+    if not re.search(r"[\u4e00-\u9fffA-Za-z]", text):
+        return False
+    return True
+
+
+def _compact_content_with_llm(article: RawArticle, task_type: str) -> tuple[str, int]:
+    publish_date, body = _split_publish_date_prefix(article.content_snippet or "")
+    body = body.strip()
+    if not body:
+        return article.content_snippet or "", 0
+    try:
+        from routes.llm import get_llm_client
+
+        client = get_llm_client()
+        config = load_llm_config()
+        if not client:
+            return article.content_snippet or "", 0
+
+        max_input = max(2000, _env_int("COMPACT_LONG_BODY_MAX_INPUT_CHARS", 5000))
+        response = client.chat.completions.create(
+            model=config.get("model", "deepseek-chat"),
+            messages=[
+                {"role": "system", "content": _COMPACT_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": _COMPACT_USER_TEMPLATE.format(
+                        title=article.title,
+                        source_name=article.source_name,
+                        task_type=task_type,
+                        raw_text=body[:max_input],
+                    ),
+                },
+            ],
+            temperature=0,
+            max_tokens=min(1200, int(config.get("max_tokens", 2048) or 2048)),
+            timeout=12,
+        )
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[-1]
+            if content.endswith("```"):
+                content = content.rsplit("```", 1)[0]
+        parsed = json.loads(content)
+        compacted = str(parsed.get("compact_text") or parsed.get("summary") or "").strip()
+        if not _is_valid_compacted_content(compacted, body):
+            return article.content_snippet or "", int(response.usage.total_tokens if response.usage else 0)
+        compacted = re.sub(r"\n{3,}", "\n\n", compacted).strip()
+        if publish_date:
+            compacted = _prepend_publish_date(compacted, publish_date)
+        return compacted, int(response.usage.total_tokens if response.usage else 0)
+    except Exception:
+        return article.content_snippet or "", 0
+
+
+def compact_long_article_contents_with_llm(
+    articles: list[RawArticle],
+    task_type: str,
+) -> tuple[list[RawArticle], int, int]:
+    """对 trafilatura 已提取但过长的正文做 LLM 精炼。"""
+    compacted_count = 0
+    tokens_used = 0
+    max_items = max(0, _env_int("COMPACT_LONG_BODY_MAX_ITEMS", 8))
+    if max_items <= 0:
+        return articles, 0, 0
+    for article in articles:
+        if compacted_count >= max_items:
+            break
+        if not _should_compact_long_body_with_llm(article, task_type):
+            continue
+        before = article.content_snippet or ""
+        after, tokens = _compact_content_with_llm(article, task_type)
+        tokens_used += tokens
+        if after and after != before:
+            article.content_snippet = after
+            compacted_count += 1
+    return articles, compacted_count, tokens_used
 
 
 # ═══════════════════════════════════════════════════════════
@@ -2293,6 +2484,15 @@ async def fetch_pipeline(req: FetchRequest):
         if cleaned_count:
             fetch_errors.append(f"ContentAgent 已清洗 {cleaned_count} 条正文模板噪音。")
 
+        unique_articles, compacted_count, compact_tokens = await run_in_threadpool(
+            compact_long_article_contents_with_llm,
+            unique_articles,
+            req.task_type,
+        )
+        tokens_used += compact_tokens
+        if compacted_count:
+            fetch_errors.append(f"LongBodyAgent 已精炼 {compacted_count} 条过长正文。")
+
     if not unique_articles and req.screen_with_llm and pre_screen_articles:
         fallback_articles = [
             article for article in pre_screen_articles
@@ -2310,6 +2510,14 @@ async def fetch_pipeline(req: FetchRequest):
                 )
                 if cleaned_count:
                     fetch_errors.append(f"ContentAgent 已清洗 {cleaned_count} 条补充正文模板噪音。")
+                fallback_articles, compacted_count, compact_tokens = await run_in_threadpool(
+                    compact_long_article_contents_with_llm,
+                    fallback_articles,
+                    req.task_type,
+                )
+                tokens_used += compact_tokens
+                if compacted_count:
+                    fetch_errors.append(f"LongBodyAgent 已精炼 {compacted_count} 条补充过长正文。")
                 unique_articles = fallback_articles
                 range_label = "今天/昨天" if req.recency_days == 2 else f"最近 {req.recency_days} 天"
                 fetch_errors.append(f"首轮筛选内容不符合{range_label}范围，已从剩余标题中补充候选。")
@@ -2327,7 +2535,15 @@ async def fetch_pipeline(req: FetchRequest):
             _fallback_candidate_from_raw_article(a, "仅获取信息源，未调用 AI 摘要和影响评分。")
             for a in unique_articles
         ]
-        llm_errors = ["已按“只获取信息源”模式运行，本次未消耗 LLM token。"] if unique_articles else []
+        if unique_articles:
+            llm_msg = "已按“只获取信息源”模式运行，本次未调用 AI 摘要和影响评分。"
+            if tokens_used:
+                llm_msg += f"标题筛选或长正文精炼已消耗 {tokens_used} token。"
+            else:
+                llm_msg += "本次未消耗 LLM token。"
+            llm_errors = [llm_msg]
+        else:
+            llm_errors = []
     all_errors = fetch_errors + llm_errors
 
     # ⑦ 过滤排序
@@ -2356,7 +2572,7 @@ async def fetch_pipeline(req: FetchRequest):
         cached_count=cached_count,
         draft_filename=draft_filename,
         briefing=briefing,
-        llm_enabled=req.analyze_with_llm,
+        llm_enabled=req.analyze_with_llm or tokens_used > 0,
         tokens_used=tokens_used,
     )
     if not from_cache:
