@@ -20,5 +20,5 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-  # 定时刷新由 morning-news 服务内置 _auto_refresh_loop 负责，默认 06:00-18:00 每 2 小时一次。
+  # 定时刷新由 morning-news 服务内置 _auto_refresh_loop 负责，默认 06:00-18:00 每 6 小时一次。
   # Docker 部署不再启动 cron_scraper.py --loop 或额外 sidecar，避免重复抓取。

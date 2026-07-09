@@ -48,7 +48,7 @@ weekly-push-tool/
 
 ### 默认方式：服务内置自动刷新
 
-服务自带定时刷新（`server.py` 的 `_auto_refresh_loop`），默认按上海时间 06:00-18:00 每 2 小时刷新一次。Docker 部署时无需再额外配置主机 cron、sidecar 或 `cron_scraper.py --loop`。
+服务自带定时刷新（`server.py` 的 `_auto_refresh_loop`），默认按上海时间 06:00-18:00 每 6 小时刷新一次。Docker 部署时无需再额外配置主机 cron、sidecar 或 `cron_scraper.py --loop`。
 
 这样只保留一套调度入口，避免 cron、容器 loop、应用内循环同时触发，造成重复抓取、数据库写入竞争或接口被打满。
 
@@ -58,7 +58,7 @@ weekly-push-tool/
 LOGISTICS_AUTO_REFRESH_TZ=Asia/Shanghai
 LOGISTICS_AUTO_REFRESH_START_HOUR=6
 LOGISTICS_AUTO_REFRESH_END_HOUR=18
-LOGISTICS_AUTO_REFRESH_INTERVAL_SECONDS=7200
+LOGISTICS_AUTO_REFRESH_INTERVAL_SECONDS=21600
 ```
 
 ### 清理服务器旧 cron

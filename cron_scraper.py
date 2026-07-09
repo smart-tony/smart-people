@@ -4,7 +4,7 @@
 ================================
 历史采集 Worker，串行抓取行业/政策来源，存入 data/logistics_cache.json。
 当前 Docker 部署默认使用 server.py 内置自动刷新，不再启动本脚本的 --loop 模式。
-默认刷新窗口为 06:00-18:00，每 2 小时一次。
+默认刷新窗口为 06:00-18:00，每 6 小时一次。
 
 用法:
   python cron_scraper.py          # 手动抓一次
@@ -35,7 +35,7 @@ BASE_URL = "http://127.0.0.1:8000"
 REFRESH_TZ = ZoneInfo("Asia/Shanghai")
 REFRESH_START_HOUR = 6
 REFRESH_END_HOUR = 18
-REFRESH_INTERVAL_SECONDS = 7200
+REFRESH_INTERVAL_SECONDS = 21600
 
 
 def in_refresh_window(now: datetime) -> bool:
@@ -149,7 +149,7 @@ def scrape_all():
 
 def main():
     if "--loop" in sys.argv:
-        print(f"🔄 持续采集模式（06:00-18:00 每2小时，仅用于本地临时排查）")
+        print(f"🔄 持续采集模式（06:00-18:00 每6小时，仅用于本地临时排查）")
         while True:
             now = datetime.now(REFRESH_TZ)
             if not in_refresh_window(now):
@@ -163,7 +163,7 @@ def main():
             ok = sum(1 for s in cache["sources"] if s.get("ok"))
             total = len(cache["sources"])
             print(f"✅ 完成: {cache['total']} 条 | {ok}/{total} 源正常")
-            print(f"💤 等待 2 小时...")
+            print(f"💤 等待 6 小时...")
             time.sleep(REFRESH_INTERVAL_SECONDS)
     else:
         print(f"📡 开始采集晨间星闻行业/政策数据...")

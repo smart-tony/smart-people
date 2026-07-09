@@ -60,7 +60,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 AUTO_REFRESH_TZ = ZoneInfo(os.getenv("LOGISTICS_AUTO_REFRESH_TZ", "Asia/Shanghai"))
-AUTO_REFRESH_INTERVAL_SECONDS = max(300, _env_int("LOGISTICS_AUTO_REFRESH_INTERVAL_SECONDS", 7200))
+AUTO_REFRESH_INTERVAL_SECONDS = max(300, _env_int("LOGISTICS_AUTO_REFRESH_INTERVAL_SECONDS", 21600))
 AUTO_REFRESH_START_HOUR = max(0, min(23, _env_int("LOGISTICS_AUTO_REFRESH_START_HOUR", 6)))
 AUTO_REFRESH_END_HOUR = max(0, min(24, _env_int("LOGISTICS_AUTO_REFRESH_END_HOUR", 18)))
 LOGISTICS_HEALTH_MAX_AGE_SECONDS = max(3600, _env_int("LOGISTICS_HEALTH_MAX_AGE_SECONDS", 16 * 3600))
@@ -115,7 +115,7 @@ async def _startup():
 
 
 async def _auto_refresh_loop():
-    """后台定时刷新：默认 06:00-18:00 每 2 小时刷新一次。
+    """后台定时刷新：默认 06:00-18:00 每 6 小时刷新一次。
     夜间停止主动抓取，降低 token、带宽和来源网站访问压力。
     """
     import asyncio
