@@ -82,6 +82,7 @@ INDUSTRY_DISPLAY_TRANSLATION_SOURCES = {
     "theloadstar",
 }
 POLICY_DISPLAY_TRANSLATION_CACHE = "policy_display_translation_cache.json"
+AI_CACHE_FILE = "ai_cache.json"
 POLICY_DISPLAY_TRANSLATION_LIMIT = int(os.getenv("POLICY_DISPLAY_TRANSLATION_LIMIT", "15"))
 try:
     MIN_LOGISTICS_ITEMS_PER_TASK = max(0, int(os.getenv("MIN_LOGISTICS_ITEMS_PER_TASK", "10")))
@@ -150,6 +151,10 @@ def _clean_feed_title(title: str) -> str:
 
 def _policy_translation_cache_path() -> Path:
     return get_data_dir() / POLICY_DISPLAY_TRANSLATION_CACHE
+
+
+def _ai_cache_path() -> Path:
+    return get_data_dir() / AI_CACHE_FILE
 
 
 def _is_mostly_english(text: str) -> bool:
@@ -391,6 +396,54 @@ def _save_policy_translation_cache(cache: dict) -> None:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(existing, f, ensure_ascii=False, indent=2)
         tmp.replace(path)
+
+
+def _normalize_aihot_payload(data: dict) -> dict:
+    """兼容 AI HOT items/daily/sections/data 等不同返回结构。"""
+    if not isinstance(data, dict):
+        return {"items": []}
+
+    payload = dict(data)
+    items = payload.get("items") or []
+    if not items and isinstance(payload.get("sections"), list):
+        items = []
+        for section in payload["sections"]:
+            if isinstance(section, dict):
+                items.extend(section.get("items") or [])
+        payload["items"] = items
+
+    if not items and isinstance(payload.get("data"), dict):
+        nested = _normalize_aihot_payload(payload["data"])
+        if nested.get("items"):
+            payload.update(nested)
+
+    payload["items"] = payload.get("items") or []
+    payload["total"] = payload.get("total") or payload.get("count") or len(payload["items"])
+    return payload
+
+
+def _load_ai_cache() -> dict | None:
+    path = _ai_cache_path()
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    normalized = _normalize_aihot_payload(payload)
+    return normalized if normalized.get("items") else None
+
+
+def _save_ai_cache(payload: dict) -> None:
+    normalized = _normalize_aihot_payload(payload)
+    if not normalized.get("items"):
+        return
+    normalized["cached_at"] = datetime.now(timezone.utc).isoformat()
+    path = _ai_cache_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
 
 
 def _strip_json_fence(content: str) -> str:
@@ -986,25 +1039,25 @@ async def _enrich_ai_items_with_images(items: list[dict]) -> list[dict]:
 
 async def _fetch_from_aihot() -> dict:
     """从 AI HOT 官方 REST API 拉取精选条目（无需 token，轻量调用）"""
+    last_error: Exception | None = None
     async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=_AIHOT_HEADERS) as client:
-        try:
-            resp = await client.get(
-                f"{API_BASE}/api/public/items",
-                params={"mode": "selected", "limit": 50},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code != 403:
-                raise
-            resp = await client.get(f"{API_BASE}/api/public/daily")
-            resp.raise_for_status()
-            data = resp.json()
-            if "items" not in data and "sections" in data:
-                items = []
-                for section in data["sections"]:
-                    items.extend(section.get("items", []))
-                data["items"] = items
+        endpoints = [
+            ("/api/public/items", {"mode": "selected", "limit": 50}),
+            ("/api/public/daily", None),
+        ]
+        for path, params in endpoints:
+            try:
+                resp = await client.get(f"{API_BASE}{path}", params=params)
+                resp.raise_for_status()
+                data = _normalize_aihot_payload(resp.json())
+                if data.get("items"):
+                    _save_ai_cache(data)
+                    break
+                last_error = ValueError(f"AI HOT {path} returned empty items")
+            except Exception as exc:
+                last_error = exc
+        else:
+            raise last_error or RuntimeError("AI HOT returned no usable data")
 
     # 先返回数据（不等图片），后台异步补充封面图
     items = data.get("items") or []
@@ -1355,13 +1408,20 @@ async def get_briefing(refresh: bool = False):
             return {**_cache_ai, "cached": True, "cache_age_sec": int(now - _cache_time_ai)}
         try:
             data = await _fetch_from_aihot()
+            data = _normalize_aihot_payload(data)
             _cache_ai = data
             _cache_time_ai = time.time()
             return {**data, "cached": False}
         except Exception as e:
+            error_text = str(e) or repr(e)
             if _cache_ai:
-                return {**_cache_ai, "cached": True, "stale": True, "error": str(e)}
-            return {"error": str(e), "items": []}
+                return {**_cache_ai, "cached": True, "stale": True, "error": error_text}
+            cached = _load_ai_cache()
+            if cached:
+                _cache_ai = cached
+                _cache_time_ai = time.time()
+                return {**cached, "cached": True, "stale": True, "error": error_text}
+            return {"error": error_text, "items": []}
 
 
 @router.get("/logistics/dates")

@@ -3,6 +3,7 @@
 启动: cd backend && uvicorn server:app --host 0.0.0.0 --port 8000
 访问: http://localhost:8000/daily
 """
+import os
 import sys
 import ipaddress
 from datetime import datetime, timedelta, timezone
@@ -48,6 +49,51 @@ app.include_router(briefing_router)
 app.include_router(admin_router)
 
 
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+AUTO_REFRESH_TZ = ZoneInfo(os.getenv("LOGISTICS_AUTO_REFRESH_TZ", "Asia/Shanghai"))
+AUTO_REFRESH_INTERVAL_SECONDS = max(300, _env_int("LOGISTICS_AUTO_REFRESH_INTERVAL_SECONDS", 7200))
+AUTO_REFRESH_START_HOUR = max(0, min(23, _env_int("LOGISTICS_AUTO_REFRESH_START_HOUR", 6)))
+AUTO_REFRESH_END_HOUR = max(0, min(24, _env_int("LOGISTICS_AUTO_REFRESH_END_HOUR", 18)))
+LOGISTICS_HEALTH_MAX_AGE_SECONDS = max(3600, _env_int("LOGISTICS_HEALTH_MAX_AGE_SECONDS", 16 * 3600))
+
+
+def _in_auto_refresh_window(now: datetime) -> bool:
+    """是否处于自动刷新时间窗。默认上海时间 06:00 <= now < 18:00。"""
+    start = AUTO_REFRESH_START_HOUR
+    end = AUTO_REFRESH_END_HOUR
+    if start == end:
+        return True
+    if start < end:
+        return start <= now.hour < end
+    return now.hour >= start or now.hour < end
+
+
+def _seconds_until_auto_refresh_window(now: datetime) -> int:
+    if _in_auto_refresh_window(now):
+        return 0
+
+    start_today = now.replace(
+        hour=AUTO_REFRESH_START_HOUR,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if AUTO_REFRESH_START_HOUR < AUTO_REFRESH_END_HOUR:
+        target = start_today if now < start_today else start_today + timedelta(days=1)
+    else:
+        target = start_today
+    return max(60, int((target - now).total_seconds()))
+
+
 @app.on_event("startup")
 async def _startup():
     """服务启动：预热缓存 + 启动定时刷新"""
@@ -69,8 +115,8 @@ async def _startup():
 
 
 async def _auto_refresh_loop():
-    """后台定时刷新：每 15 分钟自动抓取物流数据，确保数据不中断。
-    即使无人访问，数据库中也始终有最新数据。
+    """后台定时刷新：默认 06:00-18:00 每 2 小时刷新一次。
+    夜间停止主动抓取，降低 token、带宽和来源网站访问压力。
     """
     import asyncio
     from routes.briefing import _schedule_logistics_refresh
@@ -78,11 +124,16 @@ async def _auto_refresh_loop():
     await asyncio.sleep(60)  # 启动后 60 秒再开始，避免和预热冲突
 
     while True:
+        now_local = datetime.now(AUTO_REFRESH_TZ)
+        if not _in_auto_refresh_window(now_local):
+            await asyncio.sleep(_seconds_until_auto_refresh_window(now_local))
+            continue
+
         try:
             _schedule_logistics_refresh("auto_refresh_loop")
         except Exception:
             pass
-        await asyncio.sleep(900)  # 每 15 分钟
+        await asyncio.sleep(AUTO_REFRESH_INTERVAL_SECONDS)
 
 
 @app.get("/api/health")
@@ -101,7 +152,11 @@ async def health():
 
     logistics_age = int(time.time() - _cache_time_logistics) if _cache_time_logistics else None
     logistics_items = len(_cache_logistics.get("items", [])) if _cache_logistics else 0
-    logistics_healthy = logistics_items > 0 and (logistics_age is not None and logistics_age < 14400)
+    logistics_healthy = (
+        logistics_items > 0
+        and logistics_age is not None
+        and logistics_age < LOGISTICS_HEALTH_MAX_AGE_SECONDS
+    )
 
     db_today_count = 0
     counts = {}
