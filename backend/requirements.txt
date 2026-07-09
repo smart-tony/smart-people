@@ -6,4 +6,3 @@ playwright>=1.40
 openai>=1.0
 pydantic>=2.0
 trafilatura>=1.12
-cchardet>=2.1
