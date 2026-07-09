@@ -1232,6 +1232,38 @@ def _trafilatura_metadata(html: str) -> dict:
     return {}
 
 
+def _extract_publish_date(html: str) -> str:
+    """多层兜底提取发布日期: trafilatura metadata → HTML meta → 正则 → 空"""
+    import re as _re
+    from bs4 import BeautifulSoup as _BS
+
+    # 1. trafilatura metadata
+    meta = _trafilatura_metadata(html)
+    if meta.get("date"):
+        return meta["date"]
+
+    # 2. HTML meta 标签 (article:published_time / date / pubdate)
+    soup = _BS(html, "html.parser")
+    for sel in ['meta[property="article:published_time"]', 'meta[name="date"]',
+                'meta[name="pubdate"]', 'meta[itemprop="datePublished"]',
+                'meta[name="publishdate"]', 'time[datetime]']:
+        el = soup.select_one(sel)
+        if el:
+            val = el.get("content") or el.get("datetime") or ""
+            if val:
+                return _re.sub(r"T.*", "", val).strip()  # 只取日期部分
+
+    # 3. 中文正则兜底: "2026年7月9日" / "2026-07-09" / "7月9日"
+    text = soup.get_text(" ", strip=True)[:2000]
+    for pat in [r'(20\d{2}[年/-]\d{1,2}[月/-]\d{1,2}[日]?)',
+                r'(\d{1,2}月\d{1,2}日)']:
+        m = _re.search(pat, text)
+        if m:
+            return m.group(1)
+
+    return ""
+
+
 def _fallback_extract_body(html: str, article) -> str:
     """trafilatura 失败时的回退方案 — 保留原有选择器逻辑"""
     if _host_matches(article.url, {"by56.com"}):
@@ -1260,10 +1292,10 @@ async def _enrich_one(article: RawArticle, client: httpx.AsyncClient) -> RawArti
             extracted = await loop.run_in_executor(None, _trafilatura_extract, html_text)
             if extracted and len(extracted) >= 80:
                 article.content_snippet = extracted
-                # 尝试提取元数据补充日期
-                meta = await loop.run_in_executor(None, _trafilatura_metadata, html_text)
-                if meta.get("date"):
-                    article.content_snippet = f"[发布日期: {meta['date']}]\n\n{article.content_snippet}"
+                # 多层兜底提取发布日期
+                date_str = _extract_publish_date(html_text)
+                if date_str:
+                    article.content_snippet = f"[发布日期: {date_str}]\n\n{article.content_snippet}"
             else:
                 article.content_snippet = _fallback_extract_body(html_text, article)
         except Exception:
@@ -1284,6 +1316,9 @@ async def _enrich_one(article: RawArticle, client: httpx.AsyncClient) -> RawArti
                     extracted = await loop.run_in_executor(None, _trafilatura_extract, html)
                     if extracted and len(extracted) >= 80:
                         article.content_snippet = extracted
+                        date_str = _extract_publish_date(html)
+                        if date_str:
+                            article.content_snippet = f"[发布日期: {date_str}]\n\n{article.content_snippet}"
                     else:
                         article.content_snippet = _fallback_extract_body(html, article)
                 except Exception:
