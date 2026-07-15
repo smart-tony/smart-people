@@ -17,8 +17,18 @@ from pathlib import Path
 import httpx
 from fastapi import APIRouter, Depends
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field
 
-from settings import get_data_dir, require_auth
+from featured import (
+    auto_format_featured,
+    build_featured_candidates,
+    finalize_featured,
+    get_featured_response,
+    is_manual_featured,
+    load_featured_store,
+)
+from ops_format import auto_format_ops_items
+from settings import allow_page_stale_refresh, get_data_dir, require_auth, resolve_query_date, today_local
 
 router = APIRouter(prefix="/api/briefing", tags=["晨间星闻"])
 
@@ -30,6 +40,9 @@ _cache_time_logistics: float = 0
 _CACHE_TTL = 300  # 5 分钟内存缓存，超时自动拉取最新
 _CACHE_FILE_KEEP_DAYS = 7  # 磁盘日期快照保留 7 天，更早的自动清理
 _logistics_refresh_task: asyncio.Task | None = None
+_featured_auto_task: asyncio.Task | None = None
+_featured_auto_started_at: float = 0
+_FEATURED_AUTO_COOLDOWN_SECONDS = 90
 _logistics_refresh_started_at: float = 0
 _last_logistics_refresh: dict = {
     "ok": None,
@@ -85,9 +98,21 @@ POLICY_DISPLAY_TRANSLATION_CACHE = "policy_display_translation_cache.json"
 AI_CACHE_FILE = "ai_cache.json"
 POLICY_DISPLAY_TRANSLATION_LIMIT = int(os.getenv("POLICY_DISPLAY_TRANSLATION_LIMIT", "15"))
 try:
-    MIN_LOGISTICS_ITEMS_PER_TASK = max(0, int(os.getenv("MIN_LOGISTICS_ITEMS_PER_TASK", "10")))
+    MIN_LOGISTICS_ITEMS_PER_TASK = max(0, int(os.getenv("MIN_LOGISTICS_ITEMS_PER_TASK", "4")))
 except ValueError:
-    MIN_LOGISTICS_ITEMS_PER_TASK = 10
+    MIN_LOGISTICS_ITEMS_PER_TASK = 4
+try:
+    MAX_LOGISTICS_FALLBACK_PER_TASK = max(0, int(os.getenv("MAX_LOGISTICS_FALLBACK_PER_TASK", "3")))
+except ValueError:
+    MAX_LOGISTICS_FALLBACK_PER_TASK = 3
+try:
+    MAX_LOGISTICS_FALLBACK_TOTAL = max(0, int(os.getenv("MAX_LOGISTICS_FALLBACK_TOTAL", "8")))
+except ValueError:
+    MAX_LOGISTICS_FALLBACK_TOTAL = 8
+try:
+    _LOGISTICS_STALE_TRIGGER_SECONDS = max(600, int(os.getenv("LOGISTICS_STALE_TRIGGER_SECONDS", "14400")))
+except ValueError:
+    _LOGISTICS_STALE_TRIGGER_SECONDS = 14400
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _LATIN_RE = re.compile(r"[A-Za-z]")
 _RECRUITMENT_RE = re.compile(
@@ -130,7 +155,11 @@ _LOW_VALUE_POLICY_RE = re.compile(
     r"about us|contact us|webinars?|events?|press releases?|speeches?|"
     r"site map|search results|login|register|download app|"
     r"仅为标题|无具体政策|无直接影响|不涉及清关政策|系统优化|"
-    r"物流影响需人工复核",
+    r"物流影响需人工复核|"
+    r"javascript is not enabled|sanctions list service application|"
+    r"cannot run the sanctions list service|"
+    r"sanctions list search|consolidated sanctions list|non-sdn lists|"
+    r"sign up for .* sanctions",
     re.I,
 )
 _HARD_LOW_VALUE_POLICY_RE = re.compile(
@@ -143,7 +172,10 @@ _HARD_LOW_VALUE_POLICY_RE = re.compile(
 _LOW_VALUE_POLICY_TITLES_RE = re.compile(
     r"^(?:Unverified List|Denied Persons List|Entity List|SDN List|"
     r"Consolidated Screening List|Western Hemisphere|Japan, Korea & APEC|"
-    r"South & Central Asia|Trade\.gov Consolidated Screening List)$",
+    r"South & Central Asia|Trade\.gov Consolidated Screening List|"
+    r"Consolidated Sanctions List(?: \(Non-SDN Lists\))?|"
+    r"Sanctions List Search|Sanctions List Service(?: \(SLS\))?|"
+    r"Iran Sanctions)$",
     re.I,
 )
 
@@ -152,6 +184,11 @@ def _clean_feed_title(title: str) -> str:
     """把抓取标题压成类似 AI HOT 的短标题。"""
     title = " ".join((title or "").split())
     title = re.sub(r"^(?:\d+\s*(?:秒|分钟|小时|天|周|月)前|刚刚)\s*", "", title)
+    title = re.sub(
+        r"^(?:海运新闻|空运新闻|世界海关|跨境电商|物流资讯|国际物流|港航新闻|快递快运|航运新闻)\s+",
+        "",
+        title,
+    )
     title = re.sub(r"\s*分享至\s*$", "", title)
     return title.strip()
 
@@ -164,12 +201,12 @@ def _ai_cache_path() -> Path:
     return get_data_dir() / AI_CACHE_FILE
 
 
-def _is_mostly_english(text: str) -> bool:
+def _is_mostly_english(text: str, *, min_latin: int = 40) -> bool:
     if not text:
         return False
     latin_count = len(_LATIN_RE.findall(text))
     cjk_count = len(_CJK_RE.findall(text))
-    return latin_count >= 80 and latin_count > max(cjk_count * 3, 40)
+    return latin_count >= min_latin and latin_count > max(cjk_count * 3, 20)
 
 
 def _is_policy_display_item(item: dict) -> bool:
@@ -189,8 +226,11 @@ def _is_recruitment_item(title: str, summary: str, source_url: str = "") -> bool
 
 def _clean_common_summary(summary: str, title: str = "") -> str:
     """清理历史缓存/数据库里混入的站点模板、客服、公众号等噪音。"""
+    from routes.scrape import strip_reading_meta
+
     text = re.sub(r"^\ufeff+", "", summary or "")
     text = re.sub(r"\s+", " ", text).strip()
+    text = strip_reading_meta(text)
     text = _ARTICLE_META_PREFIX_RE.sub("", text).strip()
     if title:
         text = re.sub(rf"^{re.escape(title)}(?:\s*_跨境知道)?\s*", "", text)
@@ -338,7 +378,7 @@ def _needs_policy_display_translation(item: dict) -> bool:
         str(item.get(key) or "")
         for key in ("title", "summary", "ai_summary", "analysis", "ai_analysis", "body_text")
     )
-    return _is_mostly_english(text)
+    return _is_mostly_english(text, min_latin=30)
 
 
 def _needs_industry_display_translation(item: dict) -> bool:
@@ -934,7 +974,7 @@ def _save_logistics_cache(payload: dict) -> None:
         json.dump(normalized, f, ensure_ascii=False, indent=2)
     tmp.replace(target)
     # 同时保存按日期命名的快照
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_str = today_local()
     daily_target = data_dir / f"logistics_{today_str}.json"
     try:
         with open(daily_target, "w", encoding="utf-8") as f:
@@ -1234,6 +1274,51 @@ def _load_logistics_fallback(query_date: str) -> tuple[dict | None, str]:
     return None, ""
 
 
+def _response_data_age_seconds(response: dict) -> float | None:
+    updated_at = str(response.get("updated_at") or "")
+    if not updated_at:
+        return None
+    try:
+        dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0.0, time.time() - dt.timestamp())
+    except (ValueError, TypeError):
+        return None
+
+
+def _maybe_schedule_stale_refresh(response: dict, query_date: str, today: str, refresh: bool) -> None:
+    """页面访问时若今日数据超过阈值未更新，后台静默触发抓取。
+    仅北京时间首档～末档后 1 小时内允许，晚上不补抓。
+    """
+    if refresh or query_date != today:
+        return
+    if not allow_page_stale_refresh():
+        return
+    if response.get("stale"):
+        _schedule_logistics_refresh("stale_page_load")
+        return
+    age = _response_data_age_seconds(response)
+    if age is None or age >= _LOGISTICS_STALE_TRIGGER_SECONDS:
+        _schedule_logistics_refresh("stale_page_load")
+
+
+async def _finalize_and_return_logistics(
+    response: dict,
+    *,
+    remember: bool = False,
+    query_date: str = "",
+    today: str = "",
+    refresh: bool = False,
+) -> dict:
+    finalized = await _finalize_logistics_response(response, remember=remember)
+    _maybe_schedule_stale_refresh(finalized, query_date, today, refresh)
+    # 今日有数据时后台补排版（已排版的跳过，不重复烧 token）
+    if query_date and today and query_date == today and (finalized.get("total") or 0) > 0:
+        _schedule_featured_auto_format(query_date, "logistics_page_load")
+    return finalized
+
+
 def _schedule_logistics_refresh(reason: str = "") -> None:
     """用户请求只负责秒回；刷新和入库交给后台单任务。"""
     global _logistics_refresh_task, _logistics_refresh_started_at
@@ -1246,11 +1331,88 @@ def _schedule_logistics_refresh(reason: str = "") -> None:
     _logistics_refresh_task = asyncio.create_task(_refresh_logistics_background(reason))
 
 
+def _invalidate_logistics_cache() -> None:
+    global _cache_logistics, _cache_time_logistics
+    _cache_logistics = None
+    _cache_time_logistics = 0
+
+
+def _schedule_featured_auto_format(date: str, reason: str = "") -> None:
+    """抓取入库后：精选 Top5 + 行业/政策逐条排版（每条至多一次）；不阻塞用户请求。"""
+    global _featured_auto_task, _featured_auto_started_at
+    if not date:
+        return
+    if _featured_auto_task and not _featured_auto_task.done():
+        age = time.time() - _featured_auto_started_at if _featured_auto_started_at else 0
+        if age < _FEATURED_AUTO_COOLDOWN_SECONDS:
+            return
+    _featured_auto_started_at = time.time()
+    _featured_auto_task = asyncio.create_task(_post_refresh_llm_background(date, reason))
+
+
+async def _post_refresh_llm_background(date: str, reason: str = "") -> None:
+    import logging
+
+    featured_log = logging.getLogger("featured.auto")
+    ops_log = logging.getLogger("ops_format.auto")
+    try:
+        if not is_manual_featured(date):
+            result = await run_in_threadpool(auto_format_featured, date)
+            if result.get("skipped"):
+                featured_log.info(
+                    "自动精选跳过 date=%s reason=%s skip=%s",
+                    date,
+                    reason,
+                    result.get("skip_reason"),
+                )
+            else:
+                featured_log.info(
+                    "自动精选完成 date=%s reason=%s items=%d source=%s",
+                    date,
+                    reason,
+                    len(result.get("items") or []),
+                    result.get("source"),
+                )
+        else:
+            featured_log.info("今日精选已人工定稿，跳过自动排版 date=%s", date)
+    except Exception as exc:
+        featured_log.warning("自动精选失败 date=%s reason=%s error=%s", date, reason, exc, exc_info=True)
+
+    try:
+        ops = await run_in_threadpool(auto_format_ops_items, date)
+        if ops.get("skipped"):
+            ops_log.info(
+                "行业/政策排版跳过 date=%s reason=%s skip=%s",
+                date,
+                reason,
+                ops.get("skip_reason"),
+            )
+        else:
+            ops_log.info(
+                "行业/政策排版完成 date=%s reason=%s processed=%d ok=%d failed=%d",
+                date,
+                reason,
+                ops.get("processed", 0),
+                ops.get("ok", 0),
+                ops.get("failed", 0),
+            )
+            if ops.get("ok", 0) > 0:
+                _invalidate_logistics_cache()
+    except Exception as exc:
+        ops_log.warning("行业/政策排版失败 date=%s reason=%s error=%s", date, reason, exc, exc_info=True)
+
+
+async def _featured_auto_format_background(date: str, reason: str = "") -> None:
+    """兼容旧调用名。"""
+    await _post_refresh_llm_background(date, reason)
+
+
 async def _refresh_logistics_background(reason: str = "") -> None:
     global _logistics_refresh_started_at, _last_logistics_refresh
     import logging
     log = logging.getLogger("logistics.refresh")
     started = time.time()
+    featured_day = ""
     _last_logistics_refresh = {
         **_last_logistics_refresh,
         "ok": None,
@@ -1289,7 +1451,7 @@ async def _refresh_logistics_background(reason: str = "") -> None:
             write_error = await _persist_logistics_payload(scraped)
             if write_error:
                 log.warning("数据持久化部分失败: %s", write_error)
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = today_local()
             try:
                 from db import get_published
                 db_items = await run_in_threadpool(get_published, date=today, limit=200)
@@ -1320,6 +1482,7 @@ async def _refresh_logistics_background(reason: str = "") -> None:
                 "counts_by_task": counts_by_task,
                 "fallback_added": (response.get("fallback_fill") or {}).get("added", 0),
             })
+            featured_day = today
             log.info("后台刷新成功 reason=%s items=%d", reason, len(scraped.get("items", [])))
     except asyncio.CancelledError:
         log.warning("后台刷新任务被取消 reason=%s", reason)
@@ -1335,12 +1498,16 @@ async def _refresh_logistics_background(reason: str = "") -> None:
             "duration_sec": round(time.time() - started, 2),
         })
         _logistics_refresh_started_at = 0
+    if featured_day:
+        _schedule_featured_auto_format(featured_day, reason or "logistics_refresh")
 
 
 async def _supplement_db_items_by_task(
     db_items: list[dict],
     query_date: str,
     min_per_task: int = MIN_LOGISTICS_ITEMS_PER_TASK,
+    max_fallback_per_task: int = MAX_LOGISTICS_FALLBACK_PER_TASK,
+    max_fallback_total: int = MAX_LOGISTICS_FALLBACK_TOTAL,
 ) -> tuple[list[dict], dict]:
     """按任务模块从历史已发布库补足展示量。
 
@@ -1359,6 +1526,7 @@ async def _supplement_db_items_by_task(
         if item.get("source_url") or item.get("url")
     }
     added_by_task: dict[str, int] = {}
+    total_fallback_added = 0
 
     def valid_for_task(item: dict, task_type: str) -> bool:
         if (item.get("task_type") or item.get("task")) != task_type:
@@ -1368,11 +1536,21 @@ async def _supplement_db_items_by_task(
         return True
 
     for task_type, _label in LOGISTICS_TASKS:
+        if max_fallback_total > 0 and total_fallback_added >= max_fallback_total:
+            break
+
         current_count = sum(1 for item in supplemented if valid_for_task(item, task_type))
         if current_count >= min_per_task:
             continue
 
         need = min_per_task - current_count
+        if max_fallback_per_task > 0:
+            need = min(need, max_fallback_per_task)
+        if max_fallback_total > 0:
+            need = min(need, max_fallback_total - total_fallback_added)
+        if need <= 0:
+            continue
+
         try:
             historical = await run_in_threadpool(get_published, task_type=task_type, limit=max(100, min_per_task * 5))
         except Exception:
@@ -1390,13 +1568,18 @@ async def _supplement_db_items_by_task(
             supplemented.append(item)
             seen_urls.add(url)
             added_by_task[task_type] = added_by_task.get(task_type, 0) + 1
+            total_fallback_added += 1
             need -= 1
             if need <= 0:
+                break
+            if max_fallback_total > 0 and total_fallback_added >= max_fallback_total:
                 break
 
     return supplemented, {
         "enabled": True,
         "min_per_task": min_per_task,
+        "max_fallback_per_task": max_fallback_per_task,
+        "max_fallback_total": max_fallback_total,
         "added": sum(added_by_task.values()),
         "added_by_task": added_by_task,
     }
@@ -1442,7 +1625,7 @@ async def get_logistics_dates():
         dates.update(await run_in_threadpool(get_dates_with_data, 30))
     except Exception:
         pass
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = today_local()
     dates.add(today)
     return {"dates": sorted(dates, reverse=True)[:30]}
 
@@ -1456,8 +1639,8 @@ async def get_logistics(date: str = "", refresh: bool = False):
     """
     from db import get_published
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    query_date = date if date and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) else today
+    today = today_local()
+    query_date = resolve_query_date(date, default=today)
     now = time.time()
 
     if (
@@ -1466,11 +1649,12 @@ async def get_logistics(date: str = "", refresh: bool = False):
         and _cache_logistics.get("date") == query_date
         and (now - _cache_time_logistics) < _CACHE_TTL
     ):
-        return await _finalize_logistics_response({
-            **_cache_logistics,
-            "cached": True,
-            "cache_age_sec": int(now - _cache_time_logistics),
-        })
+        return await _finalize_and_return_logistics(
+            {**_cache_logistics, "cached": True, "cache_age_sec": int(now - _cache_time_logistics)},
+            query_date=query_date,
+            today=today,
+            refresh=refresh,
+        )
 
     db_error = ""
     try:
@@ -1486,24 +1670,33 @@ async def get_logistics(date: str = "", refresh: bool = False):
             if fill_meta.get("added"):
                 response["fallback_fill"] = fill_meta
                 response["stale_mixed"] = True
-            return await _finalize_logistics_response(response, remember=True)
+            return await _finalize_and_return_logistics(
+                response,
+                remember=True,
+                query_date=query_date,
+                today=today,
+                refresh=refresh,
+            )
 
     if not refresh:
         fallback, source = _load_logistics_fallback(query_date)
         if fallback:
-            if query_date == today:
+            if query_date == today and allow_page_stale_refresh():
                 _schedule_logistics_refresh("fallback-returned")
-            return await _finalize_logistics_response(
+            return await _finalize_and_return_logistics(
                 _format_logistics_cache_response(fallback, query_date, source=source, error=db_error),
                 remember=True,
+                query_date=query_date,
+                today=today,
+                refresh=refresh,
             )
-        if query_date == today:
+        if query_date == today and allow_page_stale_refresh():
             _schedule_logistics_refresh("no-cache")
         return {
             "items": [],
             "total": 0,
             "date": query_date,
-            "refreshing": query_date == today,
+            "refreshing": query_date == today and allow_page_stale_refresh(),
             "error": db_error or f"暂无 {query_date} 的缓存数据，后台正在刷新",
         }
 
@@ -1526,8 +1719,10 @@ async def get_logistics(date: str = "", refresh: bool = False):
                 if fill_meta.get("added"):
                     response["fallback_fill"] = fill_meta
                     response["stale_mixed"] = True
+                _schedule_featured_auto_format(query_date, "live_refresh")
                 return await _finalize_logistics_response(response, remember=True)
             if scraped.get("items"):
+                _schedule_featured_auto_format(query_date, "live_refresh")
                 return await _finalize_logistics_response(
                     _format_logistics_cache_response(
                         scraped,
@@ -1589,6 +1784,71 @@ def _format_logistics_response(db_items: list[dict], date: str, from_db: bool = 
     if error:
         resp["error"] = error
     return resp
+
+
+class FeaturedFinalizeRequest(BaseModel):
+    source_urls: list[str] = Field(default_factory=list, description="定稿条目原文链接，最多 5 条")
+    date: str = Field(default="", description="YYYY-MM-DD，默认今天")
+    use_llm: bool = Field(default=True, description="定稿后是否统一过 LLM 生成发生了什么/影响")
+
+
+@router.get("/featured")
+async def get_featured(date: str = ""):
+    """今日精选：已定稿/自动排版则返回成品；否则规则 Top5 占位并触发后台 DeepSeek 排版。"""
+    query_date = resolve_query_date(date)
+    payload = await run_in_threadpool(get_featured_response, query_date)
+    if (
+        query_date == today_local()
+        and not payload.get("finalized")
+        and payload.get("needs_auto_format")
+        and payload.get("total", 0) > 0
+    ):
+        _schedule_featured_auto_format(query_date, "featured_page_load")
+    return payload
+
+
+@router.get("/featured/candidates")
+async def get_featured_candidates(date: str = "", _user: str | None = Depends(require_auth)):
+    """今日精选候选池（加权排序，供管理端勾选）。"""
+    query_date = resolve_query_date(date)
+    candidates = await run_in_threadpool(build_featured_candidates, query_date)
+    store = await run_in_threadpool(load_featured_store, query_date)
+    selected_urls = []
+    if store and store.get("items"):
+        selected_urls = [
+            str(item.get("source_url") or "").strip()
+            for item in store.get("items") or []
+            if item.get("source_url")
+        ]
+    return {
+        "date": query_date,
+        "items": candidates,
+        "total": len(candidates),
+        "finalized": bool(store and store.get("finalized")),
+        "selected_urls": selected_urls,
+    }
+
+
+@router.post("/featured")
+async def post_featured(req: FeaturedFinalizeRequest, _user: str | None = Depends(require_auth)):
+    """定稿今日精选（≤5 条），并统一过 LLM 生成发生了什么/影响。"""
+    if not req.source_urls:
+        return {"ok": False, "error": "请至少选择 1 条候选"}
+    query_date = resolve_query_date(req.date)
+    payload = await run_in_threadpool(
+        finalize_featured,
+        req.source_urls,
+        query_date,
+        req.use_llm,
+    )
+    return {
+        "ok": True,
+        "date": query_date,
+        "total": len(payload.get("items") or []),
+        "items": payload.get("items") or [],
+        "missing_urls": payload.get("missing_urls") or [],
+        "finalized": True,
+    }
 
 
 @router.post("/refresh")

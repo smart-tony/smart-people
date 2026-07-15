@@ -10,7 +10,7 @@
   --gold:#F5A623;--bg:#f0f6ff;
   --text:#1a2a4a;--text-sub:#4a5e80;--muted:#8fa4c8;
   --border:#d4e3f8;--card:#fff;
-  --tech:#0044cc;--industry:#059669;--wiki:#7c3aed;--policy:#d97706;
+  --featured:#b45309;--tech:#0044cc;--industry:#059669;--wiki:#7c3aed;--policy:#d97706;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;max-width:100%;overflow-x:hidden}
@@ -33,12 +33,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",s
 .cat-count{font-size:11px;opacity:.75;margin-left:5px}
 
 .content{max-width:980px;width:100%;margin:0 auto;padding:24px 20px 80px}
-.radar-note{background:#fff;border:1px solid var(--border);border-radius:8px;padding:13px 16px;margin-bottom:18px;color:var(--text-sub);font-size:13px;display:flex;justify-content:space-between;gap:12px}
-.radar-note strong{color:var(--brand-dark)}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
-.stat{background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px 16px}
-.stat-v{font-size:26px;line-height:1;font-weight:800;color:var(--brand-dark)}
-.stat-l{font-size:12px;color:var(--muted);margin-top:6px}
+.radar-note{background:transparent;border:none;padding:0 0 14px;margin-bottom:4px;display:flex;justify-content:flex-start;align-items:center}
+.radar-note #updatedAt{color:var(--brand-dark);font-size:16px;font-weight:700;letter-spacing:.02em;line-height:1.4}
 
 .section{margin:22px 0 30px}
 .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:10px}
@@ -58,6 +54,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",s
 .section-tag.industry{background:#ecfdf5;color:var(--industry);border-color:#bbf7d0}
 .section-tag.wiki{background:#f5f3ff;color:var(--wiki);border-color:#ddd6fe}
 .section-tag.policy{background:#fff7ed;color:var(--policy);border-color:#fed7aa}
+.section-tag.featured{background:#fff7ed;color:var(--featured);border-color:#fed7aa}
+.featured-card{background:linear-gradient(180deg,#fff 0%,#fffaf5 100%);border-color:#f6d7b0}
+.featured-theme{font-size:11px;padding:2px 8px;border-radius:12px;font-weight:700;background:#fff7ed;color:var(--featured);border:1px solid #fed7aa}
+.featured-block{margin-top:10px}
+.featured-label{font-size:11px;font-weight:800;color:var(--brand-dark);margin-bottom:4px}
+.featured-text{font-size:13px;color:var(--text-sub);line-height:1.75;overflow-wrap:anywhere;word-break:break-word}
 .item-score{font-size:10px;padding:3px 8px;border-radius:10px;font-weight:700;white-space:nowrap;margin-left:auto;background:#eef3ff;color:var(--brand);border:1px solid var(--border)}
 .item-title{font-size:15px;font-weight:700;color:var(--text);line-height:1.58;margin-bottom:7px;overflow-wrap:anywhere;word-break:break-word}
 .item-title a{color:var(--text);text-decoration:none}
@@ -109,12 +111,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",s
   .cat-count{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:20px;margin:0;padding:0 6px;border-radius:10px;background:#eef3ff;color:var(--brand);font-size:10px;line-height:1;font-weight:800;opacity:1}
   .cat-pill.active .cat-count{background:rgba(255,255,255,.2);color:#fff}
   .grid{grid-template-columns:1fr}
-  .stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:14px}
-  .stat{padding:10px 8px;min-width:0}
-  .stat-v{font-size:19px}
-  .stat-l{font-size:10px;line-height:1.3;white-space:normal}
-  .radar-note{display:block;padding:10px 11px;font-size:12px;line-height:1.55;margin-bottom:14px}
-  .radar-note>div:first-child{display:none}
+  .radar-note{padding:0 0 10px;margin-bottom:2px;justify-content:flex-start}
+  .radar-note #updatedAt{font-size:15px;font-weight:700;white-space:normal;text-align:left;max-width:100%}
   .section{margin:16px 0 22px}
   .section-head{align-items:flex-start;flex-direction:column;gap:6px;margin-bottom:8px}
   .section-title h2{font-size:17px}
@@ -132,8 +130,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",s
   .panel-desc{font-size:14px;line-height:1.85}
 }
 @media(max-width:380px){
-  .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .stat-v{font-size:17px}
+  .radar-note #updatedAt{font-size:14px}
 }
 </style>
 </head>
@@ -147,7 +144,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",s
   <div class="brief-inner">
     <div>
       <div class="brief-title">晨间星闻</div>
-      <div class="brief-sub">运小星为你把 AI、物流、政策三路情报先分好筐。</div>
+      <div class="brief-sub">今日精选优先清关/关税/运价，运小星帮你筛好再读。</div>
     </div>
   </div>
 </div>
@@ -158,7 +155,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",s
 
 <div class="content">
   <div class="radar-note">
-    <div><strong>分拣规则：</strong>AI 板块沿用原逻辑；物流板块看运价、时效、航线、港口、平台和清关实操；百运百科单独沉淀内部知识；政策板块只放关税、海关规则、制裁出口管制和地缘风险。</div>
     <div id="updatedAt">星闻雷达准备中...</div>
   </div>
   <div id="content">
@@ -168,13 +164,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",s
 
 <script>
 const SECTIONS=[
-  {id:'all',label:'全部'},
+  {id:'featured',label:'今日精选'},
   {id:'industry',label:'行业动态'},
   {id:'policy',label:'政策动态'},
   {id:'wiki',label:'百运百科'},
   {id:'tech',label:'科技动态'}
 ];
 const STYLE={
+  featured:{label:'今日精选',cls:'featured',color:'var(--featured)',note:''},
   tech:{label:'科技动态',cls:'tech',color:'var(--tech)',note:'AI 模型、产品、工具、论文和开发者生态'},
   industry:{label:'行业动态',cls:'industry',color:'var(--industry)',note:'跨境物流、运价、航线、港口、平台规则、清关实操'},
   wiki:{label:'百运百科',cls:'wiki',color:'var(--wiki)',note:'百运官方知识、渠道说明、清关/FBA/空海运实操沉淀'},
@@ -184,12 +181,14 @@ const ORDER=['industry','policy','wiki','tech'];
 const AI_LABELS={'ai-models':'模型发布','ai-products':'产品更新','industry':'AI 行业','paper':'论文研究','tip':'技巧观点'};
 const POLICY_TASKS=new Set(['policy-official']);
 const POLICY_HINT_TASKS=new Set(['global-news']);
-const INDUSTRY_TASKS=new Set(['logistics-daily','crossborder-platform','shipping-port','by56-wiki']);
+const INDUSTRY_TASKS=new Set(['logistics-daily','crossborder-platform','shipping-port']);
 const POLICY_RE=/关税|税率|Section 301|Section 232|反倾销|反补贴|贸易救济|贸易摩擦|tariff|duties|anti-dumping|countervailing|customs duty|de minimis|HS编码|HS code|原产地|海关公告|清关政策|CBP|USTR|Federal Register|OFAC|BIS|SDN|Entity List|出口管制|制裁|禁运|限制名单|地缘|红海|海峡|封锁|战争|冲突|空域关闭|港口封锁|罢工|WTO|FTA|商务部|财政部|税则/i;
 const INDUSTRY_RE=/物流|货代|运价|运费|空派|空运|海运|快递|FBA|海外仓|清关|港口|航线|船公司|舱位|派送|卖家|平台|跨境电商|亚马逊|Temu|SHEIN|附加费|延误|container rate|ocean freight|air cargo|port congestion|blank sailing|surcharge|capacity/i;
 
+let featuredItems=[];
+let featuredMeta={finalized:false,source:'rules'};
 let allItems=[];
-let active='all';
+let active='featured';
 
 function todayText(){
   const d=new Date();
@@ -237,6 +236,26 @@ function normalizeAI(item,idx){
     rawTask:cat
   };
 }
+function normalizeFeatured(item,idx){
+  const section=item.section||(item.task_type==='policy-official'||item.task_type==='global-news'?'policy':'industry');
+  const what=item.what_happened||'';
+  const impact=item.impact||'';
+  return {
+    id:'feat-'+idx,
+    section,
+    title:item.title||'无标题',
+    source:cleanSource(item.source_name||item.source||'跨境情报源'),
+    url:item.source_url||item.url||'#',
+    summary:item.summary||what||'',
+    what_happened:what,
+    impact:impact,
+    theme:item.theme||'',
+    score:item.ai_score||item.featured_score||0,
+    tags:[item.theme,STYLE[section]?.label].filter(Boolean),
+    rawTask:item.task||item.task_type||'',
+    llm_ok:!!item.llm_ok
+  };
+}
 function normalizeOps(item,idx){
   const task=item.task||item._task||item.task_type||'';
   const section=classifyOps(item);
@@ -247,28 +266,42 @@ function normalizeOps(item,idx){
     source:cleanSource(item.source_name||item.source_id||item.source||'跨境情报源'),
     url:item.source_url||item.url||'#',
     summary:item.summary||item.ai_summary||'',
-    analysis:section==='wiki'?(item.analysis||item.ai_analysis||''):'',
+    analysis:item.analysis||item.ai_analysis||'',
     score:section==='wiki'?0:(item.score||item.ai_score||0),
     tags:[item.label||item._task_label||task].concat(item.tags||item.ai_tags||[]).filter(Boolean),
     rawTask:task
   };
 }
 function counts(){
-  return allItems.reduce((m,i)=>{m[i.section]=(m[i.section]||0)+1;return m},{tech:0,industry:0,policy:0});
+  const c=allItems.reduce((m,i)=>{m[i.section]=(m[i.section]||0)+1;return m},{tech:0,industry:0,policy:0,wiki:0});
+  c.featured=featuredItems.length;
+  return c;
 }
 function renderTabs(){
   const c=counts();
   document.getElementById('tabs').innerHTML=SECTIONS.map(s=>{
-    const n=s.id==='all'?allItems.length:(c[s.id]||0);
+    const n=s.id==='featured'?(c.featured||0):(c[s.id]||0);
     return `<button class="cat-pill ${active===s.id?'active':''}" onclick="setActive('${s.id}')">${s.label}<span class="cat-count">${n}</span></button>`;
   }).join('');
 }
-function renderStats(items){
-  const c=counts();
-  return `<div class="stats">
-    <div class="stat"><div class="stat-v">${items.length}</div><div class="stat-l">${active==='all'?'当前展示':'本板块'}条目</div></div>
-    <div class="stat"><div class="stat-v">${new Set(allItems.map(i=>i.source)).size}</div><div class="stat-l">信息源</div></div>
-    <div class="stat"><div class="stat-v">${c.policy||0}</div><div class="stat-l">政策风险</div></div>
+function featuredCard(item){
+  const st=STYLE[item.section]||STYLE.policy;
+  const h=host(item.url);
+  const what=(item.what_happened||item.summary||'').trim();
+  const impact=(item.impact||'').trim();
+  return `<div class="item featured-card" onclick="openFeaturedItem(this)"
+      data-title="${esc(item.title)}" data-source="${esc(item.source)}" data-section="${esc(st.label)}"
+      data-what="${esc(what)}" data-impact="${esc(impact)}" data-url="${esc(item.url)}"
+      data-theme="${esc(item.theme||'')}" data-tags="${esc((item.tags||[]).join(','))}">
+    <div class="item-meta">
+      <span class="item-source">${esc(item.source)}</span>
+      ${item.theme?`<span class="featured-theme">${esc(item.theme)}</span>`:''}
+      <span class="section-tag ${st.cls}">${st.label}</span>
+    </div>
+    <div class="item-title">${esc(item.title)}</div>
+    ${what?`<div class="featured-block"><div class="featured-label">发生了什么</div><div class="featured-text">${esc(trimText(what,180))}</div></div>`:''}
+    ${impact?`<div class="featured-block"><div class="featured-label">有什么影响</div><div class="featured-text">${esc(trimText(impact,180))}</div></div>`:''}
+    ${h?`<div class="item-link"><a href="${esc(item.url)}" target="_blank" onclick="event.stopPropagation()">${esc(h)}</a></div>`:''}
   </div>`;
 }
 function card(item){
@@ -300,15 +333,28 @@ function sectionBlock(id,items){
     <div class="grid">${items.map(card).join('')}</div>
   </section>`;
 }
+function featuredSection(items){
+  const st=STYLE.featured;
+  return `<section class="section">
+    <div class="section-head">
+      <div class="section-title"><span class="section-dot" style="background:${st.color}"></span><div><h2>${st.label}</h2></div></div>
+    </div>
+    <div class="grid">${items.map(featuredCard).join('')}</div>
+  </section>`;
+}
 function render(){
   renderTabs();
-  const shown=active==='all'?allItems:allItems.filter(i=>i.section===active);
+  if(active==='featured'){
+    if(!featuredItems.length){
+      document.getElementById('content').innerHTML='<div class="empty">今日精选准备中，可先看政策动态或行业动态。</div>';
+      return;
+    }
+    document.getElementById('content').innerHTML=featuredSection(featuredItems);
+    return;
+  }
+  const shown=allItems.filter(i=>i.section===active);
   if(!shown.length){document.getElementById('content').innerHTML='<div class="empty">这一栏暂时没有新星闻。</div>';return}
-  let html=renderStats(shown);
-  if(active==='all'){
-    ORDER.forEach(id=>{const items=allItems.filter(i=>i.section===id);if(items.length)html+=sectionBlock(id,items)});
-  }else html+=sectionBlock(active,shown);
-  document.getElementById('content').innerHTML=html;
+  document.getElementById('content').innerHTML=sectionBlock(active,shown);
 }
 function setActive(id){active=id;render()}
 async function fetchJson(url){
@@ -318,20 +364,72 @@ async function fetchJson(url){
 }
 async function loadMorningNews(refresh){
   document.getElementById('content').innerHTML='<div class="loading"><div class="spinner"></div>正在加载晨间星闻…</div>';
+  featuredPollTries=0;
+  if(featuredPollTimer){clearTimeout(featuredPollTimer);featuredPollTimer=null;}
   try{
     const qs=refresh?'?refresh=true':'';
-    const pair=await Promise.all([fetchJson('/api/briefing'+qs),fetchJson('/api/briefing/logistics'+qs)]);
-    const aiItems=(pair[0].items||[]).map(normalizeAI);
-    const opsItems=(pair[1].items||[]).map(normalizeOps);
+    const [featured,ai,logistics]=await Promise.all([
+      fetchJson('/api/briefing/featured'+qs.replace('?refresh=true','')),
+      fetchJson('/api/briefing'+qs),
+      fetchJson('/api/briefing/logistics'+qs)
+    ]);
+    featuredItems=(featured.items||[]).map(normalizeFeatured);
+    featuredMeta={finalized:!!featured.finalized,source:featured.source||'rules'};
+    const aiItems=(ai.items||[]).map(normalizeAI);
+    const opsItems=(logistics.items||[]).map(normalizeOps);
     allItems=aiItems.concat(opsItems);
-    const updated=pair[1].updated_at||pair[0].updated_at||new Date().toISOString();
+    const updated=featured.updated_at||logistics.updated_at||ai.updated_at||new Date().toISOString();
     let time='刚刚';
     try{time=new Date(updated).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}catch(e){}
     document.getElementById('updatedAt').textContent=`${todayText()} · ${time} 更新`;
     render();
+    if(!featured.finalized && (featured.items||[]).length){
+      scheduleFeaturedPoll();
+    }
   }catch(e){
     document.getElementById('content').innerHTML='<div class="error">加载失败：'+esc(e.message)+'</div>';
   }
+}
+let featuredPollTimer=null;
+let featuredPollTries=0;
+function scheduleFeaturedPoll(){
+  if(featuredPollTimer)clearTimeout(featuredPollTimer);
+  if(featuredPollTries>=6)return;
+  featuredPollTries+=1;
+  featuredPollTimer=setTimeout(async()=>{
+    try{
+      const featured=await fetchJson('/api/briefing/featured');
+      if(featured.finalized&&(featured.items||[]).length){
+        featuredItems=(featured.items||[]).map(normalizeFeatured);
+        featuredMeta={finalized:true,source:featured.source||'auto'};
+        featuredPollTries=0;
+        render();
+        return;
+      }
+      scheduleFeaturedPoll();
+    }catch(e){}
+  },8000);
+}
+function openFeaturedItem(el){
+  document.getElementById('po').classList.add('open');
+  document.body.style.overflow='hidden';
+  document.getElementById('pt').textContent=el.dataset.title||'';
+  document.getElementById('ps').textContent=(el.dataset.source||'')+' · '+(el.dataset.section||'');
+  const what=(el.dataset.what||'').trim();
+  const impact=(el.dataset.impact||'').trim();
+  const blocks=[];
+  if(what){
+    blocks.push(`<div class="panel-block"><div class="panel-block-title">发生了什么</div><div class="panel-block-body strong">${esc(what)}</div></div>`);
+  }
+  if(impact){
+    blocks.push(`<div class="panel-block"><div class="panel-block-title">有什么影响</div><div class="panel-block-body strong">${esc(impact)}</div></div>`);
+  }
+  document.getElementById('pd').innerHTML=blocks.join('')||'<div class="panel-block-body">暂无可展示摘要。</div>';
+  const url=el.dataset.url||'#';
+  document.getElementById('pl').href=url;
+  try{document.getElementById('pl').textContent='查看原文 · '+new URL(url).hostname.replace(/^www\./,'')}catch(e){document.getElementById('pl').textContent='查看原文'}
+  const tags=[el.dataset.theme||''].concat((el.dataset.tags||'').split(',')).filter(Boolean);
+  document.getElementById('pm').innerHTML=tags.map(t=>'<span class="panel-tag">'+esc(t)+'</span>').join('');
 }
 function openItem(el){
   document.getElementById('po').classList.add('open');
@@ -343,10 +441,10 @@ function openItem(el){
   const isWiki=(el.dataset.section||'')==='百运百科';
   const blocks=[];
   if(analysis){
-    blocks.push(`<div class="panel-block"><div class="panel-block-title">${isWiki?'原文重点总结':'业务解读'}</div><div class="panel-block-body strong">${esc(analysis)}</div></div>`);
+    blocks.push(`<div class="panel-block"><div class="panel-block-title">${isWiki?'原文重点总结':'有什么影响'}</div><div class="panel-block-body strong">${esc(analysis)}</div></div>`);
   }
   if(body){
-    blocks.push(`<div class="panel-block"><div class="panel-block-title">${isWiki?'原文摘要':'内容摘要'}</div><div class="panel-block-body">${esc(body)}</div></div>`);
+    blocks.push(`<div class="panel-block"><div class="panel-block-title">${isWiki?'原文摘要':'发生了什么'}</div><div class="panel-block-body">${esc(body)}</div></div>`);
   }
   document.getElementById('pd').innerHTML=blocks.join('')||'<div class="panel-block-body">暂无可展示摘要。</div>';
   const url=el.dataset.url||'#';

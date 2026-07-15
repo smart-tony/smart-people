@@ -37,6 +37,72 @@ class BriefingShapeTest(unittest.TestCase):
         self.assertEqual(item["title"], "TikTok升级AI营销工具")
         self.assertIn("updated_at", payload)
 
+    def test_local_date_bounds_cover_shanghai_morning_scrape(self):
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        from settings import local_date_bounds
+
+        sh = ZoneInfo("Asia/Shanghai")
+        # 上海 2026-07-10 06:30 = UTC 2026-07-09 22:30，应归入上海「7月10日」
+        sample = datetime(2026, 7, 9, 22, 30, 0, tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        start, end = local_date_bounds("2026-07-10")
+        self.assertLessEqual(start, sample)
+        self.assertLess(sample, end)
+
+        # 上海 2026-07-10 07:59 仍在同一天
+        sample2 = datetime(2026, 7, 9, 23, 59, 0, tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        self.assertLess(sample2, end)
+
+        # 上海 2026-07-10 08:00 = UTC 2026-07-10 00:00
+        day_start_utc = datetime(2026, 7, 10, 0, 0, 0, tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        self.assertLessEqual(start, day_start_utc)
+        self.assertLess(day_start_utc, end)
+
+    def test_beijing_refresh_schedule_slots(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from settings import allow_page_stale_refresh, next_scheduled_refresh
+
+        sh = ZoneInfo("Asia/Shanghai")
+        before = datetime(2026, 7, 13, 8, 0, tzinfo=sh)
+        self.assertEqual(next_scheduled_refresh(before).strftime("%H:%M"), "08:30")
+        mid = datetime(2026, 7, 13, 9, 0, tzinfo=sh)
+        self.assertEqual(next_scheduled_refresh(mid).strftime("%H:%M"), "10:00")
+        after_noon = datetime(2026, 7, 13, 12, 0, tzinfo=sh)
+        self.assertEqual(next_scheduled_refresh(after_noon).strftime("%H:%M"), "14:00")
+        evening = datetime(2026, 7, 13, 18, 0, tzinfo=sh)
+        nxt = next_scheduled_refresh(evening)
+        self.assertEqual(nxt.strftime("%Y-%m-%d %H:%M"), "2026-07-14 08:30")
+        self.assertFalse(allow_page_stale_refresh(evening))
+        self.assertTrue(allow_page_stale_refresh(datetime(2026, 7, 13, 10, 30, tzinfo=sh)))
+        self.assertFalse(allow_page_stale_refresh(datetime(2026, 7, 13, 8, 29, tzinfo=sh)))
+        self.assertTrue(allow_page_stale_refresh(datetime(2026, 7, 13, 15, 0, tzinfo=sh)))
+        self.assertFalse(allow_page_stale_refresh(datetime(2026, 7, 13, 15, 1, tzinfo=sh)))
+
+    def test_resolve_query_date_rejects_invalid(self):
+        from settings import resolve_query_date
+
+        self.assertEqual(resolve_query_date("2026-07-13"), "2026-07-13")
+        self.assertEqual(resolve_query_date(" 2026-07-13 "), "2026-07-13")
+        self.assertEqual(resolve_query_date("2026-13-40", default="2099-01-01"), "2099-01-01")
+        self.assertEqual(resolve_query_date("not-a-date", default="2099-01-01"), "2099-01-01")
+        self.assertEqual(resolve_query_date("", default="2099-01-01"), "2099-01-01")
+
+    def test_auto_refresh_loop_source_has_no_undefined_names(self):
+        import ast
+        from pathlib import Path
+
+        src = Path(__file__).resolve().parents[1] / "server.py"
+        tree = ast.parse(src.read_text(encoding="utf-8"))
+        # 确保循环体内不再引用未导入的 next_scheduled_refresh
+        loop_fn = next(
+            n for n in tree.body
+            if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)) and n.name == "_auto_refresh_loop"
+        )
+        names = {node.id for node in ast.walk(loop_fn) if isinstance(node, ast.Name)}
+        self.assertNotIn("next_scheduled_refresh", names)
+        self.assertIn("seconds_until_next_refresh", names)
+
 
 class ExtractorNoiseTest(unittest.TestCase):
     def test_extract_publish_date_prefers_raw_html_date_nodes(self):
@@ -125,6 +191,30 @@ class ExtractorNoiseTest(unittest.TestCase):
             5,
         )
         self.assertEqual([a.title for a in ship], ["红海航线风险再次升温"])
+
+    def test_strip_5688_reading_meta_noise(self):
+        from routes.scrape import strip_reading_meta, _clean_feed_title
+        from routes.briefing import _clean_common_summary
+
+        dirty = (
+            "美西线现货合约配售价一周内重挫36.67%。市场... "
+            "4 分钟阅读 · 2026-07-14 · 15 阅读 国际海运 海运运价 运价拐点初现 "
+            "近日 SCFI 指数下跌，四大航线运价集体回落。"
+        )
+        cleaned = strip_reading_meta(dirty)
+        self.assertNotIn("分钟阅读", cleaned)
+        self.assertNotIn("15 阅读", cleaned)
+        self.assertNotIn("国际海运", cleaned)
+        self.assertIn("SCFI", cleaned)
+        self.assertIn("近日", cleaned)
+
+        via_summary = _clean_common_summary(dirty, "运价拐点初现")
+        self.assertNotIn("分钟阅读", via_summary)
+        self.assertNotIn("15 阅读", via_summary)
+        self.assertIn("SCFI", via_summary)
+
+        self.assertEqual(_clean_feed_title("海运新闻 运价拐点初现"), "运价拐点初现")
+        self.assertEqual(_clean_feed_title("世界海关 CBP 清关新规"), "CBP 清关新规")
 
 
 if __name__ == "__main__":

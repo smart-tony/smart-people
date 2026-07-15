@@ -10,6 +10,8 @@ import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from settings import local_date_bounds, today_local
+
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "weeks.db"
 try:
@@ -89,6 +91,7 @@ def _migrate(conn: sqlite3.Connection):
         ("body_text", "TEXT DEFAULT ''"),
         ("image", "TEXT DEFAULT ''"),
         ("analysis", "TEXT DEFAULT ''"),
+        ("llm_formatted_at", "TEXT DEFAULT ''"),
     ]
     for col, typedef in migrations:
         if col not in cols:
@@ -159,8 +162,9 @@ def get_published(task_type: str = None, limit: int = 100, date: str = "") -> li
         conditions.append("task_type = ?")
         params.append(task_type)
     if date:
-        conditions.append("scraped_at LIKE ?")
-        params.append(date + "%")
+        start, end = local_date_bounds(date)
+        conditions.append("scraped_at >= ? AND scraped_at < ?")
+        params.extend([start, end])
 
     sql = f"""
         SELECT * FROM items 
@@ -174,9 +178,10 @@ def get_published(task_type: str = None, limit: int = 100, date: str = "") -> li
     return [_row_to_dict(r) for r in rows]
 
 
-def get_today_items(task_types: list[str] = None, limit: int = 200) -> list[dict]:
-    """获取今天已发布的条目（日报用）"""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+def get_today_items(task_types: list[str] = None, limit: int = 200, date: str = "") -> list[dict]:
+    """获取指定日期（默认今天，按业务时区）已发布的条目（日报用）。"""
+    day = date.strip() or today_local()
+    start, end = local_date_bounds(day)
     conn = get_db()
 
     if task_types:
@@ -184,19 +189,19 @@ def get_today_items(task_types: list[str] = None, limit: int = 200) -> list[dict
         rows = conn.execute(f"""
             SELECT * FROM items
             WHERE status = 'published'
-            AND scraped_at LIKE ?
+            AND scraped_at >= ? AND scraped_at < ?
             AND task_type IN ({placeholders})
             ORDER BY ai_score DESC
             LIMIT ?
-        """, [today + "%"] + task_types + [limit]).fetchall()
+        """, [start, end] + task_types + [limit]).fetchall()
     else:
         rows = conn.execute("""
             SELECT * FROM items
             WHERE status = 'published'
-            AND scraped_at LIKE ?
+            AND scraped_at >= ? AND scraped_at < ?
             ORDER BY ai_score DESC
             LIMIT ?
-        """, (today + "%", limit)).fetchall()
+        """, (start, end, limit)).fetchall()
 
     conn.close()
     return [_row_to_dict(r) for r in rows]
@@ -218,11 +223,12 @@ def count_by_task(date: str = "") -> dict[str, int]:
     """按 task_type 统计条目数"""
     conn = get_db()
     if date:
+        start, end = local_date_bounds(date)
         rows = conn.execute("""
             SELECT task_type, COUNT(*) as cnt FROM items
-            WHERE status='published' AND scraped_at LIKE ?
+            WHERE status='published' AND scraped_at >= ? AND scraped_at < ?
             GROUP BY task_type
-        """, (date + "%",)).fetchall()
+        """, (start, end)).fetchall()
     else:
         rows = conn.execute("""
             SELECT task_type, COUNT(*) as cnt FROM items
@@ -284,14 +290,70 @@ def update_status(source_url: str, status: str):
     conn.close()
 
 
-def publish_all_today():
-    """一键发布今天所有候选"""
+OPS_FORMAT_TASKS = (
+    "logistics-daily",
+    "crossborder-platform",
+    "shipping-port",
+    "policy-official",
+    "global-news",
+)
+
+
+def list_unformatted_ops_items(date: str = "", limit: int = 80) -> list[dict]:
+    """当日行业/政策中尚未 DeepSeek 排版的条目（不含百科）。"""
+    day = (date or "").strip() or today_local()
+    start, end = local_date_bounds(day)
+    placeholders = ",".join("?" * len(OPS_FORMAT_TASKS))
     conn = get_db()
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    rows = conn.execute(
+        f"""
+        SELECT * FROM items
+        WHERE status = 'published'
+          AND scraped_at >= ? AND scraped_at < ?
+          AND task_type IN ({placeholders})
+          AND (llm_formatted_at IS NULL OR llm_formatted_at = '')
+        ORDER BY ai_score DESC, scraped_at DESC
+        LIMIT ?
+        """,
+        [start, end, *OPS_FORMAT_TASKS, limit],
+    ).fetchall()
+    conn.close()
+    return [_row_to_dict(r) for r in rows]
+
+
+def update_item_llm_format(
+    source_url: str,
+    *,
+    title: str,
+    summary: str,
+    analysis: str,
+    formatted_at: str = "",
+) -> None:
+    """写入 DeepSeek 排版结果，并打标避免重复消耗 token。"""
+    stamp = formatted_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            UPDATE items
+            SET title = ?, summary = ?, analysis = ?, llm_formatted_at = ?
+            WHERE source_url = ?
+            """,
+            (title, summary, analysis, stamp, source_url),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def publish_all_today():
+    """一键发布今天所有候选（按业务时区「今天」）"""
+    conn = get_db()
+    start, end = local_date_bounds(today_local())
     conn.execute("""
         UPDATE items SET status = 'published' 
-        WHERE status = 'candidate' AND scraped_at LIKE ?
-    """, (today + "%",))
+        WHERE status = 'candidate' AND scraped_at >= ? AND scraped_at < ?
+    """, (start, end))
     count = conn.total_changes
     conn.commit()
     conn.close()
@@ -301,13 +363,14 @@ def publish_all_today():
 def get_stats() -> dict:
     """统计概览"""
     conn = get_db()
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
+    start, end = local_date_bounds(today_local())
+
     total = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
     published = conn.execute("SELECT COUNT(*) FROM items WHERE status='published'").fetchone()[0]
     candidates = conn.execute("SELECT COUNT(*) FROM items WHERE status='candidate'").fetchone()[0]
     today_count = conn.execute(
-        "SELECT COUNT(*) FROM items WHERE scraped_at LIKE ?", (today + "%",)
+        "SELECT COUNT(*) FROM items WHERE scraped_at >= ? AND scraped_at < ?",
+        (start, end),
     ).fetchone()[0]
 
     tasks = conn.execute("""

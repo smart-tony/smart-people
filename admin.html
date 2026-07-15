@@ -54,6 +54,30 @@ body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","M
 .module-status.ok { background:#ecfdf5; color:var(--ok); }
 .module-status.err { background:#fef2f2; color:var(--err); }
 .module-status.pending { background:#f8fafc; color:var(--muted); }
+.featured-panel {
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:16px 20px; margin-bottom:24px;
+}
+.featured-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+.featured-meta { font-size:12px; color:var(--muted); }
+.candidate-list { display:flex; flex-direction:column; gap:8px; max-height:360px; overflow-y:auto; margin:12px 0; }
+.candidate-row {
+  display:flex; gap:10px; align-items:flex-start; padding:10px 12px;
+  border:1px solid var(--border); border-radius:8px; background:#fafcff;
+}
+.candidate-row:hover { border-color:#ccddf5; }
+.candidate-row input { margin-top:4px; }
+.candidate-main { flex:1; min-width:0; }
+.candidate-title { font-size:14px; font-weight:600; line-height:1.45; }
+.candidate-sub { font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5; }
+.candidate-tags { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+.candidate-tag { font-size:11px; padding:2px 8px; border-radius:10px; background:#eef3ff; color:var(--blue); }
+.btn-finalize {
+  background:linear-gradient(135deg,#d97706,#b45309); color:#fff;
+  padding:10px 20px; font-size:14px; border-radius:8px; border:none; cursor:pointer;
+}
+.btn-finalize:hover { filter:brightness(1.05); }
+.btn-finalize:disabled { background:#cbd5e0; cursor:not-allowed; }
 .btn {
   padding:8px 18px; border-radius:8px; font-size:13px; cursor:pointer; border:none;
   font-weight:500; transition:.15s;
@@ -101,6 +125,20 @@ body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","M
 
   <button class="btn btn-all" onclick="scrapeAll()" id="btnAll">抓取全部 6 个模块</button>
 
+  <div class="section-title">⭐ 今日精选定稿</div>
+  <div class="featured-panel">
+    <div class="featured-head">
+      <div>
+        <div class="module-name">今日精选（最多 5 条）</div>
+        <div class="featured-meta" id="featuredMeta">加载候选中...</div>
+      </div>
+      <button class="btn btn-finalize" onclick="finalizeFeatured()" id="btnFinalize" disabled>定稿并生成影响</button>
+    </div>
+    <div class="candidate-list" id="candidateList">
+      <div class="candidate-sub">正在加载候选池...</div>
+    </div>
+  </div>
+
   <div class="section-title">📡 模块抓取</div>
   <div class="module-list" id="moduleList"></div>
 
@@ -123,16 +161,112 @@ const MODULES = [
   { key:'logistics-daily',      icon:'行', name:'行业动态｜物流资讯',     desc:'跨境电商新闻 / WL123 / 出海网 / 物流巴巴' },
   { key:'crossborder-platform', icon:'行', name:'行业动态｜跨境平台',     desc:'雨果 / 亿邦 / 卖家之家 / AMZ123 / 跨境知道' },
   { key:'shipping-port',        icon:'行', name:'行业动态｜航运港口',     desc:'航运界 / 港口协会 / 国际海运网 / 维运网' },
-  { key:'by56-wiki',            icon:'行', name:'行业动态｜百运百科',     desc:'百运官方百科 · 空运/海运/快递/FBA/清关' },
+  { key:'by56-wiki',            icon:'百', name:'百运百科',               desc:'百运官方百科 · 空运/海运/快递/FBA/清关' },
   { key:'global-news',          icon:'政', name:'政策动态｜地缘与国际风险', desc:'WTO / UKMTO / 能源与地缘风险来源' },
   { key:'policy-official',      icon:'政', name:'政策动态｜关税与官方政策', desc:'商务部 / 自贸区 / 贸易救济 / 关税相关来源' },
 ];
+
+const MAX_FEATURED = 5;
+let featuredCandidates = [];
+let selectedFeatured = new Set();
 
 function log(msg, cls='') {
   const now = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   const area = document.getElementById('logArea');
   area.innerHTML += `<div class="log-line"><span class="ts">[${now}]</span> <span class="${cls}">${msg}</span></div>`;
   area.scrollTop = area.scrollHeight;
+}
+
+async function loadFeaturedCandidates() {
+  const list = document.getElementById('candidateList');
+  const meta = document.getElementById('featuredMeta');
+  const btn = document.getElementById('btnFinalize');
+  try {
+    const resp = await fetch('/api/briefing/featured/candidates');
+    const data = await resp.json();
+    featuredCandidates = data.items || [];
+    selectedFeatured = new Set((data.selected_urls || []).filter(Boolean));
+    if (!featuredCandidates.length) {
+      list.innerHTML = '<div class="candidate-sub">今天还没有候选，请先抓取行业/政策模块。</div>';
+      meta.textContent = `${data.date || ''} · 候选 0 条`;
+      btn.disabled = true;
+      return;
+    }
+    meta.textContent = `${data.date || ''} · 候选 ${featuredCandidates.length} 条 · 已选 ${selectedFeatured.size}/${MAX_FEATURED}` + (data.finalized ? ' · 已定稿' : '');
+    list.innerHTML = featuredCandidates.map(item => {
+      const url = item.source_url || '';
+      const checked = selectedFeatured.has(url) ? 'checked' : '';
+      const theme = item.theme ? `<span class="candidate-tag">${item.theme}</span>` : '';
+      const score = item.featured_score ? `<span class="candidate-tag">${item.featured_score}分</span>` : '';
+      const section = item.section === 'policy' ? '政策动态' : '行业动态';
+      return `<label class="candidate-row">
+        <input type="checkbox" value="${url}" ${checked} onchange="toggleFeatured(this)">
+        <div class="candidate-main">
+          <div class="candidate-title">${item.title || '无标题'}</div>
+          <div class="candidate-sub">${item.source_name || ''} · ${section}</div>
+          <div class="candidate-tags">${theme}${score}<span class="candidate-tag">${section}</span></div>
+        </div>
+      </label>`;
+    }).join('');
+    updateFinalizeButton();
+  } catch (e) {
+    list.innerHTML = `<div class="candidate-sub">加载候选失败：${e.message}</div>`;
+    meta.textContent = '候选加载失败';
+    btn.disabled = true;
+  }
+}
+
+function toggleFeatured(el) {
+  const url = el.value;
+  if (el.checked) {
+    if (selectedFeatured.size >= MAX_FEATURED) {
+      el.checked = false;
+      log(`今日精选最多选择 ${MAX_FEATURED} 条`, 'warn');
+      return;
+    }
+    selectedFeatured.add(url);
+  } else {
+    selectedFeatured.delete(url);
+  }
+  document.getElementById('featuredMeta').textContent =
+    document.getElementById('featuredMeta').textContent.replace(/已选 \d+\/\d+/, `已选 ${selectedFeatured.size}/${MAX_FEATURED}`);
+  updateFinalizeButton();
+}
+
+function updateFinalizeButton() {
+  const btn = document.getElementById('btnFinalize');
+  btn.disabled = selectedFeatured.size === 0;
+  btn.textContent = selectedFeatured.size ? `定稿 ${selectedFeatured.size} 条并生成影响` : '定稿并生成影响';
+}
+
+async function finalizeFeatured() {
+  const btn = document.getElementById('btnFinalize');
+  const urls = Array.from(selectedFeatured);
+  if (!urls.length) return;
+  btn.disabled = true;
+  btn.textContent = '定稿中...';
+  log(`开始定稿今日精选 ${urls.length} 条（含 LLM 生成影响）...`, 'warn');
+  try {
+    const resp = await fetch('/api/briefing/featured', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_urls: urls, use_llm: true }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      log(`✅ 今日精选定稿完成：${data.total} 条`, 'ok');
+      if ((data.missing_urls || []).length) {
+        log(`⚠️ 有 ${data.missing_urls.length} 条未找到或已被过滤`, 'warn');
+      }
+      await loadFeaturedCandidates();
+    } else {
+      log(`❌ 定稿失败: ${data.error || '未知错误'}`, 'err');
+      updateFinalizeButton();
+    }
+  } catch (e) {
+    log(`❌ 定稿异常: ${e.message}`, 'err');
+    updateFinalizeButton();
+  }
 }
 
 async function loadStatus() {
@@ -269,6 +403,7 @@ loadStatus = async function() {
 };
 
 loadStatus();
+loadFeaturedCandidates();
 </script>
 </body>
 </html>

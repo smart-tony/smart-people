@@ -1,7 +1,10 @@
 import json
 import os
+import re
 import secrets
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -171,6 +174,114 @@ def get_server_host() -> str:
 
 def get_server_port() -> int:
     return _env_int("PORT", 8000)
+
+
+def get_app_tz() -> ZoneInfo:
+    """业务日界线时区，与自动刷新窗口一致。默认 Asia/Shanghai（北京时间）。"""
+    return ZoneInfo(os.getenv("LOGISTICS_AUTO_REFRESH_TZ", "Asia/Shanghai"))
+
+
+def get_auto_refresh_times() -> list[tuple[int, int]]:
+    """自动抓取时刻表（北京时间），默认 08:30 / 10:00 / 14:00。
+
+    环境变量 LOGISTICS_AUTO_REFRESH_TIMES=08:30,10:00,14:00
+    """
+    raw = os.getenv("LOGISTICS_AUTO_REFRESH_TIMES", "08:30,10:00,14:00").strip()
+    parsed: list[tuple[int, int]] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            hh, mm = part.split(":", 1)
+            hour = int(hh)
+            minute = int(mm)
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                parsed.append((hour, minute))
+        except ValueError:
+            continue
+    if not parsed:
+        return [(8, 30), (10, 0), (14, 0)]
+    return sorted(set(parsed))
+
+
+def next_scheduled_refresh(now: datetime | None = None) -> datetime:
+    """返回下一个抓取时刻（带时区）。"""
+    tz = get_app_tz()
+    now = now or datetime.now(tz)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=tz)
+    else:
+        now = now.astimezone(tz)
+
+    for hour, minute in get_auto_refresh_times():
+        candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate > now:
+            return candidate
+    first_h, first_m = get_auto_refresh_times()[0]
+    tomorrow = now + timedelta(days=1)
+    return tomorrow.replace(hour=first_h, minute=first_m, second=0, microsecond=0)
+
+
+def seconds_until_next_refresh(now: datetime | None = None) -> int:
+    target = next_scheduled_refresh(now)
+    now = now or datetime.now(get_app_tz())
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=get_app_tz())
+    return max(30, int((target - now).total_seconds()))
+
+
+def allow_page_stale_refresh(now: datetime | None = None) -> bool:
+    """页面过期补抓是否允许。首档到末档后 1 小时内允许，晚上不允许。"""
+    tz = get_app_tz()
+    now = now or datetime.now(tz)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=tz)
+    else:
+        now = now.astimezone(tz)
+    times = get_auto_refresh_times()
+    first_h, first_m = times[0]
+    last_h, last_m = times[-1]
+    start = now.replace(hour=first_h, minute=first_m, second=0, microsecond=0)
+    end = now.replace(hour=last_h, minute=last_m, second=0, microsecond=0) + timedelta(hours=1)
+    return start <= now <= end
+
+
+_QUERY_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def resolve_query_date(date: str | None = "", default: str | None = None) -> str:
+    """校验并返回 YYYY-MM-DD 查询日期；无效或空则回退 default 或 today_local()。"""
+    day = (date or "").strip()
+    if day and _QUERY_DATE_RE.fullmatch(day):
+        try:
+            datetime.strptime(day, "%Y-%m-%d")
+            return day
+        except ValueError:
+            pass
+    return default or today_local()
+
+
+def today_local() -> str:
+    """当前业务时区的日期 YYYY-MM-DD（用于「今天」判定）。"""
+    return datetime.now(get_app_tz()).strftime("%Y-%m-%d")
+
+
+def local_date_bounds(date_str: str | None = None) -> tuple[str, str]:
+    """将业务时区某一天映射为 scraped_at（UTC 存储）的查询区间 [start, end)。
+
+    scraped_at 以 UTC 写入；按上海「今天」查库时需用本地 0 点对应的 UTC 边界。
+    """
+    tz = get_app_tz()
+    if date_str:
+        day = datetime.strptime(date_str, "%Y-%m-%d").date()
+    else:
+        day = datetime.now(tz).date()
+    start_local = datetime.combine(day, datetime.min.time(), tzinfo=tz)
+    end_local = start_local + timedelta(days=1)
+    start_utc = start_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    end_utc = end_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return start_utc, end_utc
 
 
 # ── 认证依赖 ─────────────────────────────────────────────

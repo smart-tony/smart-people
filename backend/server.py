@@ -25,7 +25,8 @@ from routes.llm import router as llm_router
 from routes.scrape import router as scrape_router
 from routes.briefing import router as briefing_router
 from routes.admin import router as admin_router
-from settings import get_cors_origins, load_llm_config, require_auth
+from settings import get_cors_origins, load_llm_config, require_auth, today_local
+from settings import get_app_tz, seconds_until_next_refresh
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
@@ -59,39 +60,8 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-AUTO_REFRESH_TZ = ZoneInfo(os.getenv("LOGISTICS_AUTO_REFRESH_TZ", "Asia/Shanghai"))
-AUTO_REFRESH_INTERVAL_SECONDS = max(300, _env_int("LOGISTICS_AUTO_REFRESH_INTERVAL_SECONDS", 21600))
-AUTO_REFRESH_START_HOUR = max(0, min(23, _env_int("LOGISTICS_AUTO_REFRESH_START_HOUR", 6)))
-AUTO_REFRESH_END_HOUR = max(0, min(24, _env_int("LOGISTICS_AUTO_REFRESH_END_HOUR", 18)))
-LOGISTICS_HEALTH_MAX_AGE_SECONDS = max(3600, _env_int("LOGISTICS_HEALTH_MAX_AGE_SECONDS", 16 * 3600))
-
-
-def _in_auto_refresh_window(now: datetime) -> bool:
-    """是否处于自动刷新时间窗。默认上海时间 06:00 <= now < 18:00。"""
-    start = AUTO_REFRESH_START_HOUR
-    end = AUTO_REFRESH_END_HOUR
-    if start == end:
-        return True
-    if start < end:
-        return start <= now.hour < end
-    return now.hour >= start or now.hour < end
-
-
-def _seconds_until_auto_refresh_window(now: datetime) -> int:
-    if _in_auto_refresh_window(now):
-        return 0
-
-    start_today = now.replace(
-        hour=AUTO_REFRESH_START_HOUR,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
-    if AUTO_REFRESH_START_HOUR < AUTO_REFRESH_END_HOUR:
-        target = start_today if now < start_today else start_today + timedelta(days=1)
-    else:
-        target = start_today
-    return max(60, int((target - now).total_seconds()))
+AUTO_REFRESH_TZ = get_app_tz()
+LOGISTICS_HEALTH_MAX_AGE_SECONDS = max(3600, _env_int("LOGISTICS_HEALTH_MAX_AGE_SECONDS", 20 * 3600))
 
 
 @app.on_event("startup")
@@ -115,9 +85,7 @@ async def _startup():
 
 
 async def _auto_refresh_loop():
-    """后台定时刷新：默认 06:00-18:00 每 6 小时刷新一次。
-    夜间停止主动抓取，降低 token、带宽和来源网站访问压力。
-    """
+    """后台定时刷新：北京时间固定 08:30 / 10:00 / 14:00，晚上不抓。"""
     import asyncio
     from routes.briefing import _schedule_logistics_refresh
 
@@ -125,15 +93,25 @@ async def _auto_refresh_loop():
 
     while True:
         now_local = datetime.now(AUTO_REFRESH_TZ)
-        if not _in_auto_refresh_window(now_local):
-            await asyncio.sleep(_seconds_until_auto_refresh_window(now_local))
-            continue
+        wait_sec = seconds_until_next_refresh(now_local)
+        # 分段睡，避免超长 sleep 难排查；最多每次睡 1 小时
+        while wait_sec > 90:
+            await asyncio.sleep(min(wait_sec - 30, 3600))
+            now_local = datetime.now(AUTO_REFRESH_TZ)
+            wait_sec = seconds_until_next_refresh(now_local)
 
+        if wait_sec > 0:
+            await asyncio.sleep(wait_sec)
+
+        now_local = datetime.now(AUTO_REFRESH_TZ)
         try:
-            _schedule_logistics_refresh("auto_refresh_loop")
+            _schedule_logistics_refresh(
+                f"auto_refresh_schedule:{now_local.strftime('%H:%M')}"
+            )
         except Exception:
             pass
-        await asyncio.sleep(AUTO_REFRESH_INTERVAL_SECONDS)
+        # 同一分钟内不重复触发，再等到下一档
+        await asyncio.sleep(60)
 
 
 @app.get("/api/health")
@@ -161,15 +139,9 @@ async def health():
     db_today_count = 0
     counts = {}
     try:
-        from db import count_by_task_between
+        from db import count_by_task
         from fastapi.concurrency import run_in_threadpool
-        shanghai = ZoneInfo("Asia/Shanghai")
-        today_local = datetime.now(shanghai).date()
-        start_local = datetime.combine(today_local, datetime.min.time(), tzinfo=shanghai)
-        end_local = start_local + timedelta(days=1)
-        start_utc = start_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        end_utc = end_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        counts = await run_in_threadpool(count_by_task_between, start_utc, end_utc)
+        counts = await run_in_threadpool(count_by_task, today_local())
         db_today_count = sum(counts.values()) if counts else 0
     except Exception:
         pass

@@ -54,6 +54,64 @@ ARTICLE_META_PREFIX_RE = re.compile(
     r"(?:[•·]\s*(?:阅读|浏览|点击)\s*\d+)?\s*",
     re.I,
 )
+# 物流巴巴等：摘要中间夹「4 分钟阅读 · 2026-07-14 · 15 阅读 国际海运 海运运价」
+READING_META_RE = re.compile(
+    r"(?:\.{2,3}|…)?\s*"
+    r"\d+\s*分钟阅读\s*[·•]\s*"
+    r"20\d{2}-\d{1,2}-\d{1,2}\s*[·•]\s*"
+    r"\d+\s*阅读",
+    re.I,
+)
+_READING_TAG_TOKEN_RE = re.compile(
+    r"^\s*([\u4e00-\u9fff]{2,8}|[A-Za-z][A-Za-z0-9_\-]{1,15})(?=\s|$)"
+)
+_READING_TAG_STOP_RE = re.compile(
+    r"^(?:近日|据|当地|随着|受今|本周|最新|今天|昨日|当前|目前|德国|美国海关|希腊|以色列)"
+)
+_CHANNEL_TITLE_PREFIX_RE = re.compile(
+    r"^(?:海运新闻|空运新闻|世界海关|跨境电商|物流资讯|国际物流|港航新闻|快递快运|航运新闻)\s+"
+)
+
+
+def strip_reading_meta(text: str) -> str:
+    """去掉「N 分钟阅读 · 日期 · N 阅读 + 栏目标签」及其后短标签。"""
+    text = text or ""
+    match = READING_META_RE.search(text)
+    if not match:
+        return text
+    before = text[: match.start()].rstrip(" .…")
+    after = text[match.end() :]
+    for _ in range(8):
+        token_match = _READING_TAG_TOKEN_RE.match(after)
+        if not token_match:
+            break
+        token = token_match.group(1)
+        rest = after[token_match.end() :].strip()
+        if _READING_TAG_STOP_RE.match(token) or "：" in token or ":" in token:
+            break
+        # 正文已不够长时停止，避免把导语剥光
+        if len(rest) < 24:
+            break
+        # 英文缩写后紧跟中文正文，视为导语而非栏目
+        if re.fullmatch(r"[A-Za-z][A-Za-z0-9_\-]{1,15}", token) and re.match(
+            r"^[\u4e00-\u9fff]", rest
+        ):
+            break
+        after = after[token_match.end() :]
+    after = after.strip()
+    if len(after) >= 24:
+        return after
+    if len(before) >= 40:
+        return before
+    return (after or before or text).strip()
+
+
+def _clean_feed_title(title: str) -> str:
+    title = " ".join((title or "").split())
+    title = re.sub(r"^(?:\d+\s*(?:秒|分钟|小时|天|周|月)前|刚刚)\s*", "", title)
+    title = _CHANNEL_TITLE_PREFIX_RE.sub("", title)
+    title = re.sub(r"\s*分享至\s*$", "", title)
+    return title.strip()
 
 
 def _looks_mojibake(text: str) -> bool:
@@ -251,13 +309,6 @@ def _extract_mofcom(soup, base_url, max_items):
         if len(articles) >= max_items:
             break
     return articles
-
-
-def _clean_feed_title(title: str) -> str:
-    title = " ".join((title or "").split())
-    title = re.sub(r"^(?:\d+\s*(?:秒|分钟|小时|天|周|月)前|刚刚)\s*", "", title)
-    title = re.sub(r"\s*分享至\s*$", "", title)
-    return title.strip()
 
 
 def _append_article(articles: list[RawArticle], seen_urls: set[str], title: str, href: str, max_items: int) -> bool:
@@ -1066,6 +1117,7 @@ def _clean_common_article_text(text: str, title: str = "") -> str:
     """清理资讯站正文中的站点模板、客服、公众号、返回顶部等噪音。"""
     text = re.sub(r"^\ufeff+", "", text or "")
     text = re.sub(r"\s+", " ", text).strip()
+    text = strip_reading_meta(text)
     text = ARTICLE_META_PREFIX_RE.sub("", text).strip()
     if title:
         text = re.sub(rf"^{re.escape(title)}(?:_跨境知道)?\s*", "", text)

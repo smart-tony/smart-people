@@ -1,7 +1,8 @@
 """
 管理后台路由 — 手动触发晨间星闻行业/政策抓取 → SQLite 数据库
 POST /api/admin/scrape/{module}    → 抓取单个模块，写入数据库
-POST /api/admin/scrape-all          → 抓取全部模块
+POST /api/admin/scrape-all          → 抓取全部模块（LLM 排版后台异步）
+POST /api/admin/reformat            → 强制重新 DeepSeek 排版当日行业/政策（故障兜底）
 POST /api/admin/publish-all         → 一键发布今天候选
 GET  /api/admin/status              → 查看数据库状态
 """
@@ -137,10 +138,52 @@ async def scrape_all():
         await asyncio.sleep(1)
 
     total = sum(r["count"] for r in results)
+    # 抓取入库后，LLM 排版走后台非阻塞，避免管理端请求长时间挂起
+    try:
+        from routes.briefing import _schedule_featured_auto_format
+        from settings import today_local
+
+        _schedule_featured_auto_format(today_local(), "admin_scrape_all")
+    except Exception:
+        pass
     return {
         "ok": True,
         "total_inserted": total,
         "sources": results,
+        "formatting": "scheduled_in_background",
+    }
+
+
+@router.post("/reformat")
+async def reformat_ops(force: bool = True, date: str = ""):
+    """强制重新 DeepSeek 排版行业/政策条目（DeepSeek 故障窗口兜底）。
+
+    默认 force=True：忽略 llm_formatted_at 标记，对当日行业/政策全量重排。
+    精选保持人工定稿优先；未人工定稿时也会重排。
+    """
+    from featured import auto_format_featured
+    from ops_format import auto_format_ops_items
+    from settings import resolve_query_date
+
+    day = resolve_query_date(date)
+    featured_meta = await run_in_threadpool(auto_format_featured, day, force=True)
+    ops_meta = await run_in_threadpool(auto_format_ops_items, day, force=force)
+    return {
+        "ok": True,
+        "date": day,
+        "featured": {
+            "source": featured_meta.get("source"),
+            "total": len(featured_meta.get("items") or []),
+            "skipped": featured_meta.get("skipped"),
+            "skip_reason": featured_meta.get("skip_reason"),
+        },
+        "ops_format": {
+            "processed": ops_meta.get("processed", 0),
+            "ok": ops_meta.get("ok", 0),
+            "failed": ops_meta.get("failed", 0),
+            "skipped": ops_meta.get("skipped"),
+            "skip_reason": ops_meta.get("skip_reason"),
+        },
     }
 
 

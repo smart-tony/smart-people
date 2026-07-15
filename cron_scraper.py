@@ -4,7 +4,7 @@
 ================================
 历史采集 Worker，串行抓取行业/政策来源，存入 data/logistics_cache.json。
 当前 Docker 部署默认使用 server.py 内置自动刷新，不再启动本脚本的 --loop 模式。
-默认刷新窗口为 06:00-18:00，每 6 小时一次。
+默认与 server.py 一致：北京时间 08:30 / 10:00 / 14:00 固定三档。
 
 用法:
   python cron_scraper.py          # 手动抓一次
@@ -33,21 +33,21 @@ LOGISTICS_TASKS = [
 
 BASE_URL = "http://127.0.0.1:8000"
 REFRESH_TZ = ZoneInfo("Asia/Shanghai")
-REFRESH_START_HOUR = 6
-REFRESH_END_HOUR = 18
-REFRESH_INTERVAL_SECONDS = 21600
+REFRESH_TIMES = [(8, 30), (10, 0), (14, 0)]
 
 
-def in_refresh_window(now: datetime) -> bool:
-    return REFRESH_START_HOUR <= now.hour < REFRESH_END_HOUR
+def next_refresh_at(now: datetime) -> datetime:
+    for hour, minute in REFRESH_TIMES:
+        candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate > now:
+            return candidate
+    first_h, first_m = REFRESH_TIMES[0]
+    tomorrow = now + timedelta(days=1)
+    return tomorrow.replace(hour=first_h, minute=first_m, second=0, microsecond=0)
 
 
-def seconds_until_refresh_window(now: datetime) -> int:
-    if in_refresh_window(now):
-        return 0
-    start_today = now.replace(hour=REFRESH_START_HOUR, minute=0, second=0, microsecond=0)
-    target = start_today if now < start_today else start_today + timedelta(days=1)
-    return max(60, int((target - now).total_seconds()))
+def seconds_until_next_refresh(now: datetime) -> int:
+    return max(30, int((next_refresh_at(now) - now).total_seconds()))
 
 
 def scrape_one(task_type, label):
@@ -149,22 +149,20 @@ def scrape_all():
 
 def main():
     if "--loop" in sys.argv:
-        print(f"🔄 持续采集模式（06:00-18:00 每6小时，仅用于本地临时排查）")
+        print("🔄 持续采集模式（北京时间 08:30/10:00/14:00，仅用于本地临时排查）")
         while True:
             now = datetime.now(REFRESH_TZ)
-            if not in_refresh_window(now):
-                wait_seconds = seconds_until_refresh_window(now)
-                print(f"🌙 当前不在刷新窗口，等待 {round(wait_seconds / 3600, 1)} 小时...")
-                time.sleep(wait_seconds)
-                continue
+            wait_seconds = seconds_until_next_refresh(now)
+            nxt = next_refresh_at(now)
+            print(f"⏰ 下一档 {nxt.strftime('%Y-%m-%d %H:%M')}，等待 {round(wait_seconds / 60, 1)} 分钟...")
+            time.sleep(wait_seconds)
             print(f"\n{'='*50}")
-            print(f"📡 {datetime.now().strftime('%H:%M:%S')} 开始采集...")
+            print(f"📡 {datetime.now(REFRESH_TZ).strftime('%H:%M:%S')} 开始采集...")
             cache = scrape_all()
             ok = sum(1 for s in cache["sources"] if s.get("ok"))
             total = len(cache["sources"])
             print(f"✅ 完成: {cache['total']} 条 | {ok}/{total} 源正常")
-            print(f"💤 等待 6 小时...")
-            time.sleep(REFRESH_INTERVAL_SECONDS)
+            time.sleep(60)
     else:
         print(f"📡 开始采集晨间星闻行业/政策数据...")
         cache = scrape_all()
